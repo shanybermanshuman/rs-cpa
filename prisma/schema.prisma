@@ -1,0 +1,324 @@
+// סכמת הנתונים של מערכת ניהול הלקוחות והמשימות של סרנגה ושומן.
+// ראו CLAUDE.md לפירוט הארכיטקטורה.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  PARTNER
+  EMPLOYEE
+}
+
+// סוגי הלקוחות כפי שהמשרד מסווג אותם בפועל (לפי גיליון הלקוחות הקיים).
+enum ClientType {
+  COMPANY // חברה
+  SELF_EMPLOYED // עצמאי
+  CONTROLLING_SHAREHOLDER // בעל שליטה - מגיש דוח שנתי אישי בלבד
+}
+
+// חבילות השירות של המשרד.
+enum ServiceType {
+  FULL // מלא
+  BOOKKEEPING // הנהלת חשבונות
+  SELF_EMPLOYED_PACKAGE // עצמאי - הנה"ח חד-צידית ודיווחים
+  ACCOUNTING_ONLY // ראיית חשבון בלבד
+  OTHER // אחר - הפירוט נשמר ב-Client.serviceTypeOther
+}
+
+enum VatFrequency {
+  MONTHLY // חד-חודשי
+  BIMONTHLY // דו-חודשי
+}
+
+enum ClientStatus {
+  ACTIVE // פעיל
+  INACTIVE // לא פעיל
+  ONBOARDING // בקליטה
+}
+
+enum RecurrenceFrequency {
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum ClientTaskType {
+  VAT // מע"מ
+  INCOME_TAX_ADVANCE // מקדמות מס הכנסה
+  NATIONAL_INSURANCE // ביטוח לאומי
+  WITHHOLDING_TAX // ניכויים (טופס 102)
+  QUARTERLY_PL_REPORT // דוח רווח והפסד רבעוני
+  ANNUAL_REPORT // דוח שנתי
+  CAPITAL_DECLARATION // הצהרת הון
+  OTHER // אחר
+}
+
+enum TaskStatus {
+  NOT_STARTED // טרם החל
+  IN_PROGRESS // בטיפול
+  WAITING_ON_CLIENT // ממתין למסמכים מהלקוח
+  SUBMITTED // הוגש
+  DONE // הושלם
+  OVERDUE // באיחור
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum InternalTaskCategory {
+  ADMIN // אדמיניסטרציה
+  HR // כוח אדם
+  MARKETING // שיווק
+  IT
+}
+
+// שלבי פרויקט, כפי שהמשרד עוקב אחריהם בפועל.
+enum ProjectStatus {
+  IN_PROGRESS // בעבודה
+  WAITING_DOCS // ממתין למסמכים
+  WAITING_REPLY // ממתין לתשובות
+  DONE // הסתיים
+}
+
+// עבודה חד-פעמית שאינה של לקוח של המשרד - למשל בשיתוף עם משרד רו"ח אחר.
+// מנוהלת כאן במכוון כדי שלא יהיה מקום נוסף לנהל בו את עבודת המשרד.
+model Project {
+  id        String        @id @default(cuid())
+  name      String
+  // הגורם החיצוני שאיתו מבוצע הפרויקט
+  partner   String?
+  status    ProjectStatus @default(IN_PROGRESS)
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tasks   ProjectTask[]
+  history ProjectStatusChange[]
+
+  @@map("projects")
+}
+
+// יומן שינויי שלב של פרויקט - מי שינה, מתי, ומה הייתה הסיבה.
+// נשמר כדי שאפשר יהיה לראות איך הפרויקט התקדם ולא רק היכן הוא עומד היום.
+model ProjectStatusChange {
+  id         String         @id @default(cuid())
+  projectId  String
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromStatus ProjectStatus?
+  toStatus   ProjectStatus
+  note       String?
+  changedById String?
+  changedBy   User?         @relation("ProjectStatusChangedBy", fields: [changedById], references: [id])
+  createdAt  DateTime       @default(now())
+
+  @@index([projectId])
+  @@map("project_status_changes")
+}
+
+model ProjectTask {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime?
+  status      ProjectStatus @default(IN_PROGRESS)
+  notes       String?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([projectId])
+  @@map("project_tasks")
+}
+
+enum ReminderChannel {
+  EMAIL
+  WHATSAPP
+  IN_APP
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  role      UserRole @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectChanges ProjectStatusChange[] @relation("ProjectStatusChangedBy")
+  clients       Client[]       @relation("ClientOwner")
+  clientTasks   ClientTask[]   @relation("ClientTaskAssignee")
+  internalTasks InternalTask[] @relation("InternalTaskAssignee")
+
+  @@map("users")
+}
+
+model Client {
+  id                 String        @id @default(cuid())
+  businessName       String
+  taxId              String? // ח.פ. / ת.ז
+  clientType         ClientType
+  serviceType        ServiceType
+  // פירוט חופשי כשסוג השירות הוא "אחר"
+  serviceTypeOther   String?
+  vatFrequency       VatFrequency?
+  // מעסיק עובדים - קובע אם נדרש דיווח ניכויים (טופס 102) על השכר
+  hasEmployees       Boolean       @default(false)
+  // מספר תיק ניכויים ברשות המסים
+  withholdingFileNumber String?
+  // שיעור ניכוי במקור באחוזים. 0 = פטור מניכוי במקור. null = טרם הוזן.
+  withholdingRate       Decimal?   @db.Decimal(5, 2)
+  // תוקף אישור הניכוי במקור - יש לעקוב כדי שלא יפוג
+  withholdingValidUntil DateTime?
+  status             ClientStatus  @default(ONBOARDING)
+  engagementDate     DateTime?
+  monthlyFee         Decimal?      @db.Decimal(10, 2)
+  documentsFolderUrl String?
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  ownerId         String?
+  owner           User?            @relation("ClientOwner", fields: [ownerId], references: [id])
+  tasks           ClientTask[]
+  recurrenceRules RecurrenceRule[]
+  contacts        ClientContact[]
+
+  @@map("clients")
+}
+
+// אנשי הקשר של הלקוח. לרוב יש יותר מאחד (בעלים, מנהלת חשבונות, עו"ד),
+// ואחד מהם מסומן כראשי - זה שפונים אליו כברירת מחדל.
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  role      String? // תפקיד, למשל "מנהלת חשבונות"
+  phone     String?
+  email     String?
+  whatsapp  String?
+  isPrimary Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("client_contacts")
+}
+
+// כלל חזרה: אילו משימות סטטוטוריות ליצור אוטומטית ומתי, עבור לקוח נתון.
+model RecurrenceRule {
+  id         String              @id @default(cuid())
+  clientId   String
+  client     Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  taskType   ClientTaskType
+  frequency  RecurrenceFrequency
+  dayOfMonth Int // היום בחודש בו חל תאריך היעד, למשל 15
+  isActive   Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+
+  generatedTasks ClientTask[]
+
+  @@map("recurrence_rules")
+}
+
+// סוג הדוח השנתי. לשני הסוגים תהליך שונה ומסלול אורכות נפרד מול רשות המסים.
+enum AnnualReportKind {
+  COMPANY_AUDITED // דוח מבוקר של חברה
+  INDIVIDUAL // דוח אישי של יחיד - עצמאי או בעל שליטה
+}
+
+// מועד הגשה של הדוח השנתי לפי הסדר האורכות של המשרד מול רשות המסים.
+// המשרד מקבל אורכות בגלים, וכל גל מכסה חלק מהלקוחות בתאריך אחר - ולכן
+// אין "מועד הגשה" יחיד לדוח השנתי אלא כמה מועדים לאותה שנת מס.
+model AnnualExtension {
+  id        String          @id @default(cuid())
+  taxYear   Int
+  // לחברות וליחידים מסלולי אורכות נפרדים, ולכן המועדים מוגדרים לכל סוג בנפרד
+  kind      AnnualReportKind @default(INDIVIDUAL)
+  name      String // למשל "מועד ראשון" / "אורכה שנייה"
+  dueDate   DateTime
+  notes     String?
+  createdAt DateTime        @default(now())
+
+  tasks ClientTask[]
+
+  @@unique([taxYear, kind, name])
+  @@map("annual_extensions")
+}
+
+model ClientTask {
+  id               String          @id @default(cuid())
+  clientId         String
+  client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  recurrenceRuleId String?
+  recurrenceRule   RecurrenceRule? @relation(fields: [recurrenceRuleId], references: [id])
+  taskType         ClientTaskType
+  dueDate          DateTime
+  // תקופת הדיווח שהמשימה מכסה, למשל "ינואר 2026" - נשמר בעת היצירה כדי
+  // שיהיה ברור איזו תקופה מדווחת, ולא רק מתי מועד ההגשה.
+  periodLabel      String?
+  // סכום הדיווח בש"ח. נשמר כדי לאפשר השוואה בין תקופות ובדיקת סבירות -
+  // דיווח שחורג משמעותית מהחודשים הקודמים הוא בדרך כלל טעות.
+  amount           Decimal?        @db.Decimal(14, 2)
+  status           TaskStatus      @default(NOT_STARTED)
+  priority         TaskPriority    @default(MEDIUM)
+  notes            String?
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  assigneeId String?
+  assignee   User?         @relation("ClientTaskAssignee", fields: [assigneeId], references: [id])
+  reminders  ReminderLog[]
+
+  // רלוונטי לדוח השנתי בלבד: לאיזה גל אורכות משויך הלקוח.
+  // שיוך למועד מעדכן גם את dueDate, כדי שכל חישובי הדחיפות יישארו נכונים.
+  annualExtensionId String?
+  annualExtension   AnnualExtension? @relation(fields: [annualExtensionId], references: [id], onDelete: SetNull)
+
+  // מונע יצירת אותה משימה חוזרת פעמיים לאותה תקופה
+  @@unique([recurrenceRuleId, dueDate])
+  @@map("client_tasks")
+}
+
+model InternalTask {
+  id        String               @id @default(cuid())
+  title     String
+  category  InternalTaskCategory
+  status    TaskStatus           @default(NOT_STARTED)
+  dueDate   DateTime?
+  notes     String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  assigneeId String?
+  assignee   User?   @relation("InternalTaskAssignee", fields: [assigneeId], references: [id])
+
+  @@map("internal_tasks")
+}
+
+// טרם מיושם בפועל בשלב א' (ראו תכנית העבודה) - נשמר בסכמה כדי
+// שמנגנון התזכורות העתידי לא ידרוש שינוי מבני במסד הנתונים.
+model ReminderLog {
+  id           String          @id @default(cuid())
+  clientTaskId String
+  clientTask   ClientTask      @relation(fields: [clientTaskId], references: [id], onDelete: Cascade)
+  channel      ReminderChannel
+  sentAt       DateTime        @default(now())
+
+  @@map("reminder_logs")
+}
