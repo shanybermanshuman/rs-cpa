@@ -122,6 +122,12 @@ export default async function ClientDetailPage({
                   label='תדירות מע"מ'
                   value={client.vatFrequency ? vatFrequencyLabels[client.vatFrequency] : null}
                 />
+                {client.hasEmployees && (
+                  <DetailRow
+                    label="תדירות ניכויי מס הכנסה"
+                    value={vatFrequencyLabels[client.withholdingFrequency]}
+                  />
+                )}
               </dl>
             </CardContent>
           </Card>

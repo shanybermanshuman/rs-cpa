@@ -118,6 +118,7 @@ type AmountTask = {
   dueDate: Date;
   amount: unknown;
   client: { id: string };
+  recurrenceRule?: { frequency: RecurrenceFrequency } | null;
 };
 
 /**
@@ -130,7 +131,9 @@ type AmountTask = {
 export function amountStats(tasks: AmountTask[]): Map<string, AmountStats> {
   const series = new Map<string, AmountTask[]>();
   for (const task of tasks) {
-    const key = `${task.client.id}|${task.taskType}`;
+    // התדירות היא חלק מהסדרה: סכום דו-חודשי מכסה חודשיים ואינו בר-השוואה
+    // לסכום חודשי. בלעדיה, כל מעבר תדירות היה מייצר סימוני חריגה שגויים.
+    const key = `${task.client.id}|${task.taskType}|${task.recurrenceRule?.frequency ?? ""}`;
     const list = series.get(key);
     if (list) list.push(task);
     else series.set(key, [task]);
@@ -328,6 +331,7 @@ export async function getBoardByType(
       periodLabel: true,
       taskType: true,
       amount: true,
+      recurrenceRule: { select: { frequency: true } },
       client: { select: { id: true, businessName: true } },
     },
     orderBy: { dueDate: "asc" },
@@ -416,6 +420,7 @@ export async function getBoardByMonth(
       taskType: true,
       periodLabel: true,
       amount: true,
+      recurrenceRule: { select: { frequency: true } },
       client: { select: { id: true, businessName: true } },
     },
     orderBy: { dueDate: "asc" },
@@ -483,6 +488,7 @@ export async function getBoardByClient(
       periodLabel: true,
       taskType: true,
       amount: true,
+      recurrenceRule: { select: { frequency: true } },
       client: { select: { id: true, businessName: true } },
     },
     orderBy: { dueDate: "asc" },

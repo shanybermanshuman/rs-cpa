@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { periodLabelForYear } from "@/lib/annual";
+import {
+  defaultAnnualDueDate,
+  periodLabelForYear,
+  yearFromPeriodLabel,
+} from "@/lib/annual";
 
 export type AnnualFormState = {
   error?: string;
@@ -125,8 +129,28 @@ export async function deleteExtension(extensionId: string) {
   const denied = await requirePartner();
   if (denied) return;
 
-  // הלקוחות המשויכים אינם נמחקים - השיוך שלהם רק מתנתק (onDelete: SetNull)
-  await prisma.annualExtension.delete({ where: { id: extensionId } });
+  // הלקוחות המשויכים אינם נמחקים - השיוך שלהם רק מתנתק (onDelete: SetNull).
+  // לפני המחיקה מחזירים להם את מועד ההגשה הרגיל, אחרת הם נשארים עם תאריך
+  // האורכה שנמחקה.
+  const assigned = await prisma.clientTask.findMany({
+    where: { annualExtensionId: extensionId },
+    select: { id: true, periodLabel: true },
+  });
+
+  await prisma.$transaction([
+    ...assigned.flatMap((task) => {
+      const year = task.periodLabel ? yearFromPeriodLabel(task.periodLabel) : null;
+      return year === null
+        ? []
+        : [
+            prisma.clientTask.update({
+              where: { id: task.id },
+              data: { dueDate: defaultAnnualDueDate(year) },
+            }),
+          ];
+    }),
+    prisma.annualExtension.delete({ where: { id: extensionId } }),
+  ]);
   revalidateAnnual();
 }
 
@@ -142,9 +166,24 @@ export async function assignExtension(taskId: string, formData: FormData) {
   const extensionId = String(formData.get("extensionId") ?? "").trim() || null;
 
   if (!extensionId) {
+    // ניתוק מאורכה מחזיר את מועד ההגשה הרגיל ולא משאיר את תאריך האורכה
+    const task = await prisma.clientTask.findUnique({
+      where: { id: taskId },
+      select: { periodLabel: true, annualExtensionId: true },
+    });
+    // מחזירים את המועד הרגיל רק כשהדוח באמת היה משויך לאורכה. דוח שלא היה
+    // משויך נשאר עם המועד שהוזן לו ידנית בטופס העריכה.
+    const year =
+      task?.annualExtensionId && task.periodLabel
+        ? yearFromPeriodLabel(task.periodLabel)
+        : null;
+
     await prisma.clientTask.update({
       where: { id: taskId },
-      data: { annualExtensionId: null },
+      data: {
+        annualExtensionId: null,
+        ...(year !== null ? { dueDate: defaultAnnualDueDate(year) } : {}),
+      },
     });
     revalidateAnnual();
     return;

@@ -177,6 +177,9 @@ model Client {
   // פירוט חופשי כשסוג השירות הוא "אחר"
   serviceTypeOther   String?
   vatFrequency       VatFrequency?
+  // תדירות דיווח ניכויי מס הכנסה (טופס 102). מעסיק קטן מדווח דו-חודשי.
+  // חל על ניכויי מס הכנסה בלבד - ניכויי ביטוח לאומי נשארים חודשיים.
+  withholdingFrequency VatFrequency @default(MONTHLY)
   // מעסיק עובדים - קובע אם נדרש דיווח ניכויים (טופס 102) על השכר
   hasEmployees       Boolean       @default(false)
   // מספר תיק ניכויים ברשות המסים

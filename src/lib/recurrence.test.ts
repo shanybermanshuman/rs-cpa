@@ -105,6 +105,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "SELF_EMPLOYED_PACKAGE",
       vatFrequency: "BIMONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), [
       "VAT",
@@ -121,6 +122,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "BOOKKEEPING",
       vatFrequency: "MONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(!rules.some((r) => r.taskType === "NATIONAL_INSURANCE"));
     assert.ok(rules.some((r) => r.taskType === "VAT"));
@@ -132,6 +134,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "OTHER",
       vatFrequency: null,
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
@@ -142,6 +145,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "SELF_EMPLOYED_PACKAGE",
       vatFrequency: null,
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
@@ -152,6 +156,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "SELF_EMPLOYED_PACKAGE",
       vatFrequency: "MONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
@@ -162,6 +167,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "FULL",
       vatFrequency: null,
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(!rules.some((r) => r.taskType === "INCOME_TAX_ADVANCE"));
     assert.ok(!rules.some((r) => r.taskType === "NATIONAL_INSURANCE"));
@@ -174,6 +180,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "SELF_EMPLOYED_PACKAGE",
       vatFrequency: null,
       hasEmployees: true,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), [
       "WITHHOLDING_TAX",
@@ -188,6 +195,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "FULL",
       vatFrequency: "MONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
@@ -198,6 +206,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "OTHER",
       vatFrequency: null,
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(!rules.some((r) => r.taskType === "VAT"));
   });
@@ -208,6 +217,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "FULL",
       vatFrequency: "MONTHLY",
       hasEmployees: true,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
   });
@@ -218,6 +228,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "BOOKKEEPING",
       vatFrequency: "MONTHLY",
       hasEmployees: true,
+      withholdingFrequency: "MONTHLY",
     });
     const types = rules.map((r) => r.taskType);
     assert.ok(types.includes("WITHHOLDING_TAX"));
@@ -230,12 +241,47 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
     }
   });
 
+  test("ניכויי מס הכנסה דו-חודשיים, וניכויי ביטוח לאומי נשארים חודשיים", () => {
+    const rules = defaultRulesForClient({
+      clientType: "COMPANY",
+      serviceType: "BOOKKEEPING",
+      vatFrequency: "MONTHLY",
+      hasEmployees: true,
+      withholdingFrequency: "BIMONTHLY",
+    });
+    assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_TAX")!.frequency, "BIMONTHLY");
+    assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_NI")!.frequency, "MONTHLY");
+  });
+
+  test("תדירות ניכויים אינה משפיעה על לקוח שאינו מעסיק", () => {
+    const rules = defaultRulesForClient({
+      clientType: "COMPANY",
+      serviceType: "BOOKKEEPING",
+      vatFrequency: "MONTHLY",
+      hasEmployees: false,
+      withholdingFrequency: "BIMONTHLY",
+    });
+    assert.ok(!rules.some((r) => r.taskType.startsWith("WITHHOLDING")));
+  });
+
+  test("עוסק פטור מעסיק מקבל ניכויי מס הכנסה בתדירות שהוגדרה", () => {
+    const rules = defaultRulesForClient({
+      clientType: "EXEMPT_DEALER",
+      serviceType: "SELF_EMPLOYED_PACKAGE",
+      vatFrequency: null,
+      hasEmployees: true,
+      withholdingFrequency: "BIMONTHLY",
+    });
+    assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_TAX")!.frequency, "BIMONTHLY");
+  });
+
   test("מי שאינו מעסיק עובדים אינו מקבל דיווח ניכויים", () => {
     const rules = defaultRulesForClient({
       clientType: "COMPANY",
       serviceType: "FULL",
       vatFrequency: "MONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
     assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_NI"));
@@ -247,6 +293,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "OTHER",
       vatFrequency: null,
       hasEmployees: true,
+      withholdingFrequency: "MONTHLY",
     });
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
@@ -257,6 +304,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       serviceType: "FULL",
       vatFrequency: "MONTHLY",
       hasEmployees: false,
+      withholdingFrequency: "MONTHLY",
     });
     assert.ok(rules.some((r) => r.taskType === "QUARTERLY_PL_REPORT"));
   });
@@ -310,5 +358,20 @@ describe("dueDateForPeriod - מועד ההגשה של תקופה, לקליטה �
       );
       assert.equal(back, result!.periodLabel);
     }
+  });
+});
+
+describe("defaultAnnualDueDate - מועד ההגשה הרגיל של הדוח השנתי", () => {
+  test("30 באפריל בשנה שאחרי שנת המס", async () => {
+    const { defaultAnnualDueDate } = await import("./annual");
+    assert.equal(iso(defaultAnnualDueDate(2025)), "2026-04-30");
+    assert.equal(iso(defaultAnnualDueDate(2026)), "2027-04-30");
+  });
+
+  test("זהה למועד שהמנוע יוצר לדוח השנתי", async () => {
+    const { defaultAnnualDueDate } = await import("./annual");
+    const [generated] = dueDatesInRange("YEARLY", 30, new Date(Date.UTC(2027, 0, 1)), 11);
+    assert.equal(generated.periodLabel, "שנת 2026");
+    assert.equal(iso(generated.dueDate), iso(defaultAnnualDueDate(2026)));
   });
 });

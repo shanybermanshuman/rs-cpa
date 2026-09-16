@@ -178,7 +178,10 @@ export type DefaultRule = {
  * זו נקודת הפתיחה בלבד - ניתן להוסיף, לבטל או לשנות כללים לכל לקוח בנפרד.
  */
 export function defaultRulesForClient(
-  client: Pick<Client, "clientType" | "serviceType" | "vatFrequency" | "hasEmployees">,
+  client: Pick<
+    Client,
+    "clientType" | "serviceType" | "vatFrequency" | "hasEmployees" | "withholdingFrequency"
+  >,
 ): DefaultRule[] {
   const annualReport: DefaultRule = {
     taskType: "ANNUAL_REPORT",
@@ -188,8 +191,13 @@ export function defaultRulesForClient(
 
   // ניכויי שכר מדווחים לשתי רשויות - מס הכנסה וביטוח לאומי - ונעקבים בנפרד:
   // אחד יכול להיות מדווח כשהשני עדיין לא, ולכל אחד סכום משלו.
+  // מעסיק קטן מדווח ניכויי מס הכנסה דו-חודשי; ניכויי ביטוח לאומי תמיד חודשיים.
   const withholdingRules: DefaultRule[] = [
-    { taskType: "WITHHOLDING_TAX", frequency: "MONTHLY", dayOfMonth: 15 },
+    {
+      taskType: "WITHHOLDING_TAX",
+      frequency: client.withholdingFrequency === "BIMONTHLY" ? "BIMONTHLY" : "MONTHLY",
+      dayOfMonth: 15,
+    },
     { taskType: "WITHHOLDING_NI", frequency: "MONTHLY", dayOfMonth: 15 },
   ];
 

@@ -215,6 +215,23 @@ export function ClientForm({ action, client, users, submitLabel }: Props) {
             </div>
           </Field>
 
+          <Field
+            label="תדירות דיווח ניכויי מס הכנסה"
+            htmlFor="withholdingFrequency"
+            error={errors.withholdingFrequency}
+            hint="רלוונטי למעסיקים. ניכויי ביטוח לאומי מדווחים תמיד חודשי"
+          >
+            <NativeSelect
+              id="withholdingFrequency"
+              name="withholdingFrequency"
+              defaultValue={client?.withholdingFrequency ?? "MONTHLY"}
+            >
+              {toOptions(vatFrequencyLabels).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </NativeSelect>
+          </Field>
+
           <Field label="רו״ח מטפל/ת" htmlFor="ownerId" error={errors.ownerId}>
             <NativeSelect id="ownerId" name="ownerId" defaultValue={client?.ownerId ?? ""}>
               <option value="">לא שויך</option>
