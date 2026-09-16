@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { OPEN_STATUSES } from "@/lib/task-generator";
 import { daysUntil, describeDueDate, formatDate, startOfToday } from "@/lib/dates";
-import { clientTaskTypeLabels } from "@/lib/enums";
+import { clientTaskTypeLabel } from "@/lib/enums";
 import { WITHHOLDING_WARNING_DAYS, withholdingInfo } from "@/lib/withholding";
 
 /**
@@ -64,6 +64,7 @@ export async function getAlerts(): Promise<Alert[]> {
       select: {
         id: true,
         taskType: true,
+        taskTypeOther: true,
         dueDate: true,
         periodLabel: true,
         recurrenceRuleId: true,
@@ -118,7 +119,7 @@ export async function getAlerts(): Promise<Alert[]> {
     if (task.recurrenceRuleId !== null) continue;
 
     const overdue = task.dueDate < today;
-    const label = clientTaskTypeLabels[task.taskType];
+    const label = clientTaskTypeLabel(task);
     alerts.push({
       id: `task-${task.id}`,
       kind: overdue ? "TASK_OVERDUE" : "TASK_DUE_SOON",

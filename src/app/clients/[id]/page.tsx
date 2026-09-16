@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import {
   clientStatusLabels,
+  clientTaskTypeLabel,
   clientTaskTypeLabels,
   clientTypeLabels,
   recurrenceFrequencyLabels,
@@ -272,7 +273,7 @@ export default async function ClientDetailPage({
                           href={`/tasks/${task.id}`}
                           className="font-medium hover:text-accent hover:underline"
                         >
-                          {clientTaskTypeLabels[task.taskType]}
+                          {clientTaskTypeLabel(task)}
                         </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground">

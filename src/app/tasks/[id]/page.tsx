@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { DeleteTaskButton } from "@/components/delete-task-button";
 import {
+  clientTaskTypeLabel,
   clientTaskTypeLabels,
   recurrenceFrequencyLabels,
   taskPriorityLabels,
@@ -59,7 +60,7 @@ export default async function TaskDetailPage({
           <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold">
-                {clientTaskTypeLabels[task.taskType]}
+                {clientTaskTypeLabel(task)}
               </h1>
               <Badge variant="outline">{taskStatusLabels[task.status]}</Badge>
             </div>

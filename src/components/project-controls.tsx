@@ -16,6 +16,7 @@ import {
 import { projectStatusLabels, toOptions } from "@/lib/enums";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
@@ -175,7 +176,7 @@ export function AddProjectTaskForm({ projectId }: { projectId: string }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="task-due">מועד</Label>
-        <Input id="task-due" name="dueDate" type="date" className="w-40" />
+        <DateField id="task-due" name="dueDate" className="w-40" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="task-status">שלב</Label>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { defaultRulesForClient, dueDatesInRange } from "@/lib/recurrence";
+import { startOfToday } from "@/lib/dates";
 import type { TaskStatus } from "@/generated/prisma/client";
 
 /** כמה חודשים קדימה נוצרות משימות שוטפות. */
@@ -104,9 +105,12 @@ export async function markOverdueTasks(): Promise<number> {
  * מסנכרן ללקוח את סט כללי החזרה הסטטוטוריים המתאים לו, ומיד גם את המשימות
  * הראשונות - כדי שלקוח חדש לא "ייפול בין הכיסאות" עד ריצת ה-cron.
  *
- * מוסיף רק כללים שחסרים (לפי סוג המשימה) ולעולם אינו דורס או מוחק כללים
- * קיימים. כך, לקוח שיובא ללא תדירות מע"מ ושהתדירות הושלמה לו מאוחר יותר,
- * יקבל את כלל המע"מ שלו בעדכון הבא - בלי לשכפל את שאר הכללים.
+ * מוסיף כללים שחסרים, **ומבטל כללים שחדלו להתאים** - למשל כשלקוח משתנה
+ * לעוסק פטור, או כשתדירות המע"מ נמחקת. בלי הביטול, שינוי סוג הלקוח היה
+ * משאיר אותו עם דיווחים חודשיים שאינם שלו.
+ *
+ * הביטול שמרני בכוונה: הכלל מסומן כלא-פעיל ולא נמחק, ונמחקות ממנו רק
+ * משימות **עתידיות שטרם הוגשו**. כל מה שהוגש בעבר נשאר להיסטוריה.
  */
 export async function syncDefaultRulesForClient(clientId: string): Promise<void> {
   const client = await prisma.client.findUnique({
@@ -121,20 +125,38 @@ export async function syncDefaultRulesForClient(clientId: string): Promise<void>
 
   if (!client) return;
 
+  const desired = defaultRulesForClient(client);
+  const desiredTypes = new Set(desired.map((rule) => rule.taskType));
+
   const existing = await prisma.recurrenceRule.findMany({
-    where: { clientId },
-    select: { taskType: true },
+    where: { clientId, isActive: true },
+    select: { id: true, taskType: true },
   });
   const existingTypes = new Set(existing.map((r) => r.taskType));
 
-  const missing = defaultRulesForClient(client).filter(
-    (rule) => !existingTypes.has(rule.taskType),
-  );
-
+  const missing = desired.filter((rule) => !existingTypes.has(rule.taskType));
   if (missing.length > 0) {
     await prisma.recurrenceRule.createMany({
       data: missing.map((rule) => ({ ...rule, clientId })),
     });
+  }
+
+  const obsolete = existing.filter((rule) => !desiredTypes.has(rule.taskType));
+  if (obsolete.length > 0) {
+    const ids = obsolete.map((rule) => rule.id);
+    await prisma.$transaction([
+      prisma.recurrenceRule.updateMany({
+        where: { id: { in: ids } },
+        data: { isActive: false },
+      }),
+      prisma.clientTask.deleteMany({
+        where: {
+          recurrenceRuleId: { in: ids },
+          dueDate: { gte: startOfToday() },
+          status: { in: OPEN_STATUSES },
+        },
+      }),
+    ]);
   }
 
   await generateRecurringTasks(DEFAULT_HORIZON_MONTHS, clientId);

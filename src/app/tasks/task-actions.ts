@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { optionalText } from "@/lib/form-schema";
+import { MAX_YEAR, MIN_YEAR } from "@/lib/dates";
 
 const taskSchema = z.object({
   clientId: z.string().trim().min(1, "יש לבחור לקוח"),
@@ -19,10 +20,16 @@ const taskSchema = z.object({
     "CAPITAL_DECLARATION",
     "OTHER",
   ]),
+  taskTypeOther: optionalText,
   dueDate: z
     .string()
     .trim()
     .min(1, "יש להזין מועד הגשה")
+    .refine((v) => !Number.isNaN(new Date(v).getTime()), "תאריך לא תקין")
+    .refine((v) => {
+      const year = new Date(v).getUTCFullYear();
+      return year >= MIN_YEAR && year <= MAX_YEAR;
+    }, `השנה חייבת להיות בין ${MIN_YEAR} ל-${MAX_YEAR}`)
     .transform((v) => new Date(v)),
   periodLabel: optionalText,
   status: z.enum([

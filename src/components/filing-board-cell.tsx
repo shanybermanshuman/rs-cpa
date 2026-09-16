@@ -2,7 +2,11 @@
 
 import { useRef } from "react";
 import { useFormStatus } from "react-dom";
-import { setFilingAmount, toggleFilingCell } from "@/app/filings/actions";
+import {
+  backfillFilingAmount,
+  setFilingAmount,
+  toggleFilingCell,
+} from "@/app/filings/actions";
 import { formatAmount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BoardCell } from "@/lib/filing-board";
@@ -11,6 +15,7 @@ const STATE_STYLES = {
   SUBMITTED: "bg-accent/20 text-accent hover:bg-accent/30",
   OPEN: "bg-muted text-muted-foreground hover:bg-muted-foreground/20",
   OVERDUE: "bg-destructive/15 text-destructive hover:bg-destructive/25",
+  MISSING: "",
   NONE: "",
 } as const;
 
@@ -18,6 +23,7 @@ const STATE_SYMBOLS = {
   SUBMITTED: "✓",
   OPEN: "○",
   OVERDUE: "!",
+  MISSING: "–",
   NONE: "·",
 } as const;
 
@@ -25,6 +31,7 @@ const STATE_TITLES = {
   SUBMITTED: "הוגש — לחיצה מבטלת",
   OPEN: "טרם הוגש — לחיצה מסמנת כהוגש",
   OVERDUE: "באיחור — לחיצה מסמנת כהוגש",
+  MISSING: "תקופה שקדמה לשימוש במערכת — אפשר לקלוט את הסכום שדווח",
   NONE: "לא רלוונטי",
 } as const;
 
@@ -60,8 +67,13 @@ function AmountInput({ cell, label }: { cell: BoardCell; label: string }) {
       ? null
       : `${cell.changePct > 0 ? "+" : ""}${Math.round(cell.changePct)}%`;
 
+  // תקופה שאין לה שורה נקלטת למפרע; לתקופה קיימת מעדכנים את הסכום
+  const action = cell.backfill
+    ? backfillFilingAmount.bind(null, cell.backfill)
+    : setFilingAmount.bind(null, cell.taskId!);
+
   return (
-    <form ref={formRef} action={setFilingAmount.bind(null, cell.taskId!)}>
+    <form ref={formRef} action={action}>
       <input
         type="text"
         inputMode="decimal"
@@ -122,6 +134,29 @@ export function FilingBoardCell({
   label: string;
   showAmount?: boolean;
 }) {
+  // תקופה שחלפה ואין לה שורה: אין מה לסמן כהוגש, אבל אפשר לקלוט את הסכום
+  // שדווח בפועל. בלי הצגת סכומים אין לתא הזה שימוש, ולכן הוא נשאר עדין.
+  if (cell.state === "MISSING" && cell.backfill) {
+    return showAmount ? (
+      <div className="inline-flex flex-col items-center gap-1">
+        <span
+          className="flex size-8 items-center justify-center rounded border border-dashed text-xs text-muted-foreground/60"
+          title={`${label} · ${STATE_TITLES.MISSING}`}
+        >
+          {STATE_SYMBOLS.MISSING}
+        </span>
+        <AmountInput cell={cell} label={label} />
+      </div>
+    ) : (
+      <span
+        className="inline-flex size-8 items-center justify-center text-sm text-muted-foreground/40"
+        title={STATE_TITLES.MISSING}
+      >
+        {STATE_SYMBOLS.MISSING}
+      </span>
+    );
+  }
+
   if (!cell.taskId || cell.state === "NONE") {
     return (
       <span

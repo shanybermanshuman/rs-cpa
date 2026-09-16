@@ -7,6 +7,7 @@ import type { InternalTaskFormState } from "@/app/internal-tasks/actions";
 import { internalTaskCategoryLabels, taskStatusLabels, toOptions } from "@/lib/enums";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
@@ -82,10 +83,9 @@ export function InternalTaskForm({
 
         <div className="space-y-2">
           <Label htmlFor="dueDate">תאריך יעד</Label>
-          <Input
+          <DateField
             id="dueDate"
             name="dueDate"
-            type="date"
             defaultValue={toDateInputValue(task?.dueDate)}
           />
         </div>

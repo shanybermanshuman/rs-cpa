@@ -11,6 +11,7 @@ import {
 } from "@/app/annual-reports/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { NativeSelect } from "@/components/ui/native-select";
 
 type ExtensionOption = { id: string; name: string };
@@ -62,10 +63,9 @@ export function AddExtensionForm({
         <label htmlFor={`ext-date-${kind}`} className="text-sm font-medium">
           מועד הגשה
         </label>
-        <Input
+        <DateField
           id={`ext-date-${kind}`}
           name="dueDate"
-          type="date"
           className="w-40"
           required
         />

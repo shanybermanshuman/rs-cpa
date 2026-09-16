@@ -1,3 +1,5 @@
+import type { ClientTaskType } from "@/generated/prisma/client";
+
 /**
  * תרגום ערכי ה-enum מהסכמה לתוויות בעברית להצגה בממשק.
  *
@@ -9,6 +11,7 @@
 export const clientTypeLabels = {
   COMPANY: "חברה",
   SELF_EMPLOYED: "עצמאי",
+  EXEMPT_DEALER: "עוסק פטור",
   CONTROLLING_SHAREHOLDER: "בעל שליטה",
 } as const;
 
@@ -89,4 +92,19 @@ export function toOptions<T extends Record<string, string>>(labels: T) {
     value: value as keyof T & string,
     label,
   }));
+}
+
+/**
+ * תווית סוג המשימה להצגה.
+ *
+ * כשהסוג הוא "אחר" מוצג הפירוט החופשי במקום המילה "אחר" - הוא מה שמזהה
+ * את המשימה בפועל, והמילה "אחר" לבדה אינה אומרת דבר ברשימה.
+ */
+export function clientTaskTypeLabel(task: {
+  taskType: ClientTaskType;
+  taskTypeOther?: string | null;
+}): string {
+  return task.taskType === "OTHER" && task.taskTypeOther
+    ? task.taskTypeOther
+    : clientTaskTypeLabels[task.taskType];
 }

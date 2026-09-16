@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { ClientForm } from "@/components/client-form";
+import { DeleteClient } from "@/components/delete-client";
 import { updateClient } from "../../actions";
 
 export default async function EditClientPage({
@@ -17,7 +18,12 @@ export default async function EditClientPage({
 
   const { id } = await params;
   const [client, users] = await Promise.all([
-    prisma.client.findUnique({ where: { id } }),
+    prisma.client.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { tasks: true, contacts: true, recurrenceRules: true } },
+      },
+    }),
     prisma.user.findMany({
       where: { isActive: true },
       select: { id: true, name: true },
@@ -45,6 +51,16 @@ export default async function EditClientPage({
           client={client}
           users={users}
           submitLabel="שמירת שינויים"
+        />
+
+        <DeleteClient
+          clientId={client.id}
+          businessName={client.businessName}
+          counts={{
+            tasks: client._count.tasks,
+            contacts: client._count.contacts,
+            rules: client._count.recurrenceRules,
+          }}
         />
       </div>
     </AppShell>

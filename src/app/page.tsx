@@ -8,7 +8,7 @@ import { CycleProgress } from "@/components/cycle-progress";
 import { getFilingCycles, getIndividualTasks } from "@/lib/filing-cycles";
 import { IndividualTaskRow } from "@/components/individual-task-row";
 import { OPEN_STATUSES } from "@/lib/task-generator";
-import { clientTaskTypeLabels } from "@/lib/enums";
+import { clientTaskTypeLabel, clientTaskTypeLabels } from "@/lib/enums";
 import { describeDueDate, formatDate, startOfToday } from "@/lib/dates";
 import { withholdingInfo } from "@/lib/withholding";
 import { cn } from "@/lib/utils";
@@ -220,7 +220,7 @@ export default async function DashboardPage() {
                     <span className="font-medium">{task.client.businessName}</span>
                     <span className="text-muted-foreground">
                       {" · "}
-                      {clientTaskTypeLabels[task.taskType]}
+                      {clientTaskTypeLabel(task)}
                     </span>
                   </span>
                   <span

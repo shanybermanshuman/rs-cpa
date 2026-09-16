@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { OPEN_STATUSES } from "@/lib/task-generator";
 import { startOfToday } from "@/lib/dates";
-import { HEBREW_MONTHS } from "@/lib/recurrence";
+import { HEBREW_MONTHS, dueDateForPeriod } from "@/lib/recurrence";
 import { clientTaskTypeLabels } from "@/lib/enums";
-import type { ClientTaskType, TaskStatus } from "@/generated/prisma/client";
+import type {
+  ClientTaskType,
+  RecurrenceFrequency,
+  TaskStatus,
+} from "@/generated/prisma/client";
 
 /**
  * לוח מעקב הדיווחים השוטפים.
@@ -22,7 +26,25 @@ export const BOARD_TASK_TYPES: ClientTaskType[] = [
   "QUARTERLY_PL_REPORT",
 ];
 
-export type CellState = "SUBMITTED" | "OPEN" | "OVERDUE" | "NONE";
+export type CellState =
+  | "SUBMITTED"
+  | "OPEN"
+  | "OVERDUE"
+  /**
+   * תקופה שחלפה, שלפי כלל הדיווח של הלקוח אמורה להיות - אך אין לה שורה
+   * במערכת. קורה לכל התקופות שלפני תחילת השימוש במערכת, וזה התא שמאפשר
+   * לקלוט את הסכום שדווח בפועל למפרע.
+   */
+  | "MISSING"
+  | "NONE";
+
+/** מה שנדרש כדי ליצור דיווח למפרע לתקופה שאין לה שורה. */
+export type BackfillTarget = {
+  clientId: string;
+  taskType: ClientTaskType;
+  periodYear: number;
+  periodMonth: number;
+};
 
 export type BoardCell = {
   taskId: string | null;
@@ -39,6 +61,8 @@ export type BoardCell = {
   prevAverage: number | null;
   /** חריגה מהותית מהממוצע - סימן מובהק לטעות בהזנה או לאירוע חריג */
   unusual: boolean;
+  /** מלא רק בתא `MISSING`: הפרטים הדרושים ליצירת הדיווח למפרע */
+  backfill: BackfillTarget | null;
 };
 
 export type BoardColumn = { key: string; label: string; sortAt: number };
@@ -68,6 +92,7 @@ export const EMPTY_CELL: BoardCell = {
   changePct: null,
   prevAverage: null,
   unusual: false,
+  backfill: null,
 };
 
 /** כמה תקופות אחורה נלקחות לחישוב הממוצע בבדיקת הסבירות. */
@@ -167,7 +192,54 @@ function cellFrom(
     changePct: stat?.changePct ?? null,
     prevAverage: stat?.prevAverage ?? null,
     unusual: stat?.unusual ?? false,
+    backfill: null,
   };
+}
+
+/**
+ * תא לתקופה שחלפה ואין לה שורה במערכת.
+ *
+ * **אינו נספר כפיגור ואינו נכנס למונה ההתקדמות**: היעדר השורה נובע מכך
+ * שהמערכת טרם הייתה בשימוש באותה תקופה, ולא מכך שהדיווח לא הוגש. ספירתו
+ * כפיגור הייתה צובעת את כל תחילת השנה באדום בלי סיבה.
+ */
+function missingCell(target: BackfillTarget): BoardCell {
+  return { ...EMPTY_CELL, state: "MISSING", backfill: target };
+}
+
+type ActiveRule = {
+  taskType: ClientTaskType;
+  frequency: RecurrenceFrequency;
+  dayOfMonth: number;
+  clientId: string;
+};
+
+/**
+ * ממלא תאי `MISSING` לכל תקופה שחלפה ושכלל הדיווח של הלקוח מחייב, אך אין
+ * לה שורה. זה מה שמאפשר לקלוט למפרע את הסכומים מתחילת השנה.
+ */
+function fillMissingCells(
+  cells: Record<string, BoardCell>,
+  rule: ActiveRule,
+  year: number,
+  today: Date,
+  columnKeyOf: (periodMonth: number) => string,
+) {
+  for (let periodMonth = 1; periodMonth <= 12; periodMonth++) {
+    const key = columnKeyOf(periodMonth);
+    if (cells[key]) continue;
+
+    const due = dueDateForPeriod(rule.frequency, rule.dayOfMonth, year, periodMonth);
+    // תקופה שאינה תקפה לתדירות הזו, או שמועד ההגשה שלה טרם חלף
+    if (!due || due.dueDate >= today) continue;
+
+    cells[key] = missingCell({
+      clientId: rule.clientId,
+      taskType: rule.taskType,
+      periodYear: year,
+      periodMonth,
+    });
+  }
 }
 
 type BoardTask = {
@@ -223,7 +295,9 @@ function summarize(rows: BoardRow[], columns: BoardColumn[]) {
   for (const row of rows) {
     for (const column of columns) {
       const cell = row.cells[column.key];
-      if (!cell || cell.state === "NONE") continue;
+      // תקופה שאין לה שורה אינה נספרת: ההתקדמות נמדדת מול מה שהמערכת
+      // אמורה לנהל, ולא מול תקופות שקדמו לשימוש בה
+      if (!cell || cell.state === "NONE" || cell.state === "MISSING") continue;
       total++;
       if (cell.state === "SUBMITTED") submitted++;
     }
@@ -280,6 +354,38 @@ export async function getBoardByType(
     today,
     stats,
   );
+
+  // כללי הדיווח הפעילים, כדי להציג גם תקופות שחלפו ואין להן שורה - ולאפשר
+  // לקלוט אליהן סכום למפרע. לקוח שיש לו כלל אך אין לו אף שורה בשנה הזו
+  // מקבל כאן שורה משלו, אחרת לא היה לאן להקליד.
+  const rules = await prisma.recurrenceRule.findMany({
+    where: { taskType, isActive: true, client: { status: "ACTIVE" } },
+    select: {
+      taskType: true,
+      frequency: true,
+      dayOfMonth: true,
+      clientId: true,
+      client: { select: { businessName: true } },
+    },
+  });
+
+  const byClientId = new Map(rows.map((row) => [row.clientId, row]));
+  for (const rule of rules) {
+    let row = byClientId.get(rule.clientId);
+    if (!row) {
+      row = {
+        clientId: rule.clientId,
+        clientName: rule.client.businessName,
+        cells: {},
+        behindSince: null,
+      };
+      byClientId.set(rule.clientId, row);
+      rows.push(row);
+    }
+    fillMissingCells(row.cells, rule, year, today, (m) => String(m));
+  }
+
+  rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "he"));
   return { columns, rows, ...summarize(rows, columns) };
 }
 
@@ -409,6 +515,27 @@ export async function getBoardByClient(
     byType.set(task.taskType, row);
   }
 
+  // תקופות שחלפו ואין להן שורה, לקליטת סכומים למפרע
+  const rules = await prisma.recurrenceRule.findMany({
+    where: { clientId, isActive: true, taskType: { in: BOARD_TASK_TYPES } },
+    select: { taskType: true, frequency: true, dayOfMonth: true, clientId: true },
+  });
+
+  for (const rule of rules) {
+    const row =
+      byType.get(rule.taskType) ??
+      ({
+        taskType: rule.taskType,
+        label: clientTaskTypeLabels[rule.taskType],
+        cells: {},
+        total: null,
+        average: null,
+      } satisfies ClientBoardRow);
+
+    fillMissingCells(row.cells, rule, year, today, (m) => String(m));
+    byType.set(rule.taskType, row);
+  }
+
   const rows = BOARD_TASK_TYPES.filter((t) => byType.has(t)).map((t) => {
     const row = byType.get(t)!;
     const amounts = Object.values(row.cells)
@@ -426,7 +553,7 @@ export async function getBoardByClient(
   for (const row of rows) {
     for (const column of columns) {
       const cell = row.cells[column.key];
-      if (!cell || cell.state === "NONE") continue;
+      if (!cell || cell.state === "NONE" || cell.state === "MISSING") continue;
       total++;
       if (cell.state === "SUBMITTED") submitted++;
       if (cell.unusual) {

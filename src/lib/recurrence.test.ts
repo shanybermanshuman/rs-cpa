@@ -1,6 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { dueDatesInRange, periodLabelFor, defaultRulesForClient } from "./recurrence";
+import {
+  dueDateForPeriod,
+  dueDatesInRange,
+  periodLabelFor,
+  defaultRulesForClient,
+} from "./recurrence";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -131,6 +136,48 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
     assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
   });
 
+  test("עוסק פטור מקבל דוח שנתי בלבד, ללא דיווחים חודשיים", () => {
+    const rules = defaultRulesForClient({
+      clientType: "EXEMPT_DEALER",
+      serviceType: "SELF_EMPLOYED_PACKAGE",
+      vatFrequency: null,
+      hasEmployees: false,
+    });
+    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
+  });
+
+  test("עוסק פטור אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
+    const rules = defaultRulesForClient({
+      clientType: "EXEMPT_DEALER",
+      serviceType: "SELF_EMPLOYED_PACKAGE",
+      vatFrequency: "MONTHLY",
+      hasEmployees: false,
+    });
+    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
+  });
+
+  test("עוסק פטור אינו מקבל מקדמות או ביטוח לאומי", () => {
+    const rules = defaultRulesForClient({
+      clientType: "EXEMPT_DEALER",
+      serviceType: "FULL",
+      vatFrequency: null,
+      hasEmployees: false,
+    });
+    assert.ok(!rules.some((r) => r.taskType === "INCOME_TAX_ADVANCE"));
+    assert.ok(!rules.some((r) => r.taskType === "NATIONAL_INSURANCE"));
+    assert.ok(!rules.some((r) => r.taskType === "QUARTERLY_PL_REPORT"));
+  });
+
+  test("עוסק פטור שמעסיק עובדים כן מקבל ניכויים - החובה נובעת מהעסקה ולא ממע\"מ", () => {
+    const rules = defaultRulesForClient({
+      clientType: "EXEMPT_DEALER",
+      serviceType: "SELF_EMPLOYED_PACKAGE",
+      vatFrequency: null,
+      hasEmployees: true,
+    });
+    assert.deepEqual(rules.map((r) => r.taskType), ["WITHHOLDING_TAX", "ANNUAL_REPORT"]);
+  });
+
   test("בעל שליטה אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
     const rules = defaultRulesForClient({
       clientType: "CONTROLLING_SHAREHOLDER",
@@ -189,5 +236,56 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       hasEmployees: false,
     });
     assert.ok(rules.some((r) => r.taskType === "QUARTERLY_PL_REPORT"));
+  });
+});
+
+describe("dueDateForPeriod - מועד ההגשה של תקופה, לקליטה למפרע", () => {
+  test("תקופה חודשית מוגשת ב-15 בחודש שאחריה", () => {
+    const result = dueDateForPeriod("MONTHLY", 15, 2026, 3);
+    assert.equal(iso(result!.dueDate), "2026-04-15");
+    assert.equal(result!.periodLabel, "מרץ 2026");
+  });
+
+  test("תקופת דצמבר מוגשת בינואר של השנה הבאה", () => {
+    const result = dueDateForPeriod("MONTHLY", 15, 2026, 12);
+    assert.equal(iso(result!.dueDate), "2027-01-15");
+    assert.equal(result!.periodLabel, "דצמבר 2026");
+  });
+
+  test("תקופה דו-חודשית תקפה רק בחודשי סיום התקופה", () => {
+    const valid = dueDateForPeriod("BIMONTHLY", 15, 2026, 2);
+    assert.equal(iso(valid!.dueDate), "2026-03-15");
+    assert.equal(valid!.periodLabel, "ינואר–פברואר 2026");
+    // מרץ אינו חודש סיום של תקופה דו-חודשית
+    assert.equal(dueDateForPeriod("BIMONTHLY", 15, 2026, 3), null);
+  });
+
+  test("תקופה רבעונית תקפה רק בחודש סיום הרבעון", () => {
+    const valid = dueDateForPeriod("QUARTERLY", 30, 2026, 3);
+    assert.equal(iso(valid!.dueDate), "2026-04-30");
+    assert.equal(valid!.periodLabel, "רבעון 1 2026");
+    assert.equal(dueDateForPeriod("QUARTERLY", 30, 2026, 4), null);
+  });
+
+  test("יום שאינו קיים בחודש ההגשה מקוצר לסוף החודש", () => {
+    const result = dueDateForPeriod("MONTHLY", 31, 2026, 1);
+    assert.equal(iso(result!.dueDate), "2026-02-28");
+  });
+
+  test("חודש לא חוקי מוחזר כ-null", () => {
+    assert.equal(dueDateForPeriod("MONTHLY", 15, 2026, 0), null);
+    assert.equal(dueDateForPeriod("MONTHLY", 15, 2026, 13), null);
+  });
+
+  test("הפוך ל-periodLabelFor: מה שנכנס הוא מה שיוצא", () => {
+    for (const month of [1, 2, 6, 11, 12]) {
+      const result = dueDateForPeriod("MONTHLY", 15, 2026, month);
+      const back = periodLabelFor(
+        "MONTHLY",
+        result!.dueDate.getUTCFullYear(),
+        result!.dueDate.getUTCMonth() + 1,
+      );
+      assert.equal(back, result!.periodLabel);
+    }
   });
 });

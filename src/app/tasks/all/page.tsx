@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { TaskStatusSelect } from "@/components/task-status-select";
-import { clientTaskTypeLabels, taskStatusLabels, toOptions } from "@/lib/enums";
+import { clientTaskTypeLabel, clientTaskTypeLabels, taskStatusLabels, toOptions } from "@/lib/enums";
 import { daysUntil, describeDueDate, formatDate, startOfToday } from "@/lib/dates";
 import { countLabel, TASK_FORMS } from "@/lib/hebrew";
 import { OPEN_STATUSES } from "@/lib/task-generator";
@@ -213,7 +213,7 @@ export default async function AllTasksPage({
                             href={`/tasks/${task.id}`}
                             className="font-medium hover:text-accent hover:underline"
                           >
-                            {clientTaskTypeLabels[task.taskType]}
+                            {clientTaskTypeLabel(task)}
                           </Link>
                           {task.periodLabel && (
                             <div className="text-xs text-muted-foreground">

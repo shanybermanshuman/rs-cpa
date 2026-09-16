@@ -14,6 +14,7 @@ import {
 } from "@/lib/enums";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -152,10 +153,9 @@ export function ClientForm({ action, client, users, submitLabel }: Props) {
             error={errors.withholdingValidUntil}
             hint="המערכת תתריע 45 יום לפני הפקיעה"
           >
-            <Input
+            <DateField
               id="withholdingValidUntil"
               name="withholdingValidUntil"
-              type="date"
               defaultValue={toDateInputValue(client?.withholdingValidUntil)}
             />
           </Field>
@@ -225,10 +225,9 @@ export function ClientForm({ action, client, users, submitLabel }: Props) {
           </Field>
 
           <Field label="תאריך תחילת התקשרות" htmlFor="engagementDate" error={errors.engagementDate}>
-            <Input
+            <DateField
               id="engagementDate"
               name="engagementDate"
-              type="date"
               defaultValue={toDateInputValue(client?.engagementDate)}
             />
           </Field>

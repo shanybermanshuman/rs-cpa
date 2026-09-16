@@ -262,6 +262,8 @@ export default async function FilingsPage({
             <>
               {" · "}
               <span className="text-destructive">⚠</span> חריגה מהתקופות הקודמות
+              {" · "}
+              <span>–</span> תקופה שקדמה לשימוש במערכת, אפשר לקלוט לה סכום
             </>
           )}
         </p>

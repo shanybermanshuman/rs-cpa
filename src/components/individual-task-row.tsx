@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TaskStatusSelect } from "@/components/task-status-select";
-import { clientTaskTypeLabels } from "@/lib/enums";
+import { clientTaskTypeLabel } from "@/lib/enums";
 import { daysUntil, describeDueDate, formatDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { ClientTask } from "@/generated/prisma/client";
@@ -31,7 +31,7 @@ export function IndividualTaskRow({ task }: { task: Row }) {
             href={`/tasks/${task.id}`}
             className="text-sm hover:text-accent hover:underline"
           >
-            {clientTaskTypeLabels[task.taskType]}
+            {clientTaskTypeLabel(task)}
             {task.periodLabel && (
               <span className="text-muted-foreground"> ({task.periodLabel})</span>
             )}

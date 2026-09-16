@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import type { Client, ClientTask, User } from "@/generated/prisma/client";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/enums";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,6 +76,7 @@ export function ClientTaskForm({
   cancelHref: string;
 }) {
   const [state, formAction] = useActionState<ClientTaskFormState, FormData>(action, {});
+  const [taskType, setTaskType] = useState<string>(task?.taskType ?? "OTHER");
   const errors = state.fieldErrors ?? {};
   const clientId = task?.clientId ?? lockedClientId;
   const lockedClient = clients.find((c) => c.id === lockedClientId);
@@ -105,7 +107,12 @@ export function ClientTaskForm({
           )}
 
           <Field label="סוג המשימה *" htmlFor="taskType" error={errors.taskType}>
-            <NativeSelect id="taskType" name="taskType" defaultValue={task?.taskType ?? "OTHER"}>
+            <NativeSelect
+              id="taskType"
+              name="taskType"
+              value={taskType}
+              onChange={(e) => setTaskType(e.currentTarget.value)}
+            >
               {toOptions(clientTaskTypeLabels).map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -114,11 +121,28 @@ export function ClientTaskForm({
             </NativeSelect>
           </Field>
 
+          {/* "אחר" בלי פירוט אינו אומר דבר, ולכן הפירוט נדרש כשנבחר */}
+          {taskType === "OTHER" && (
+            <Field
+              label="פירוט המשימה *"
+              htmlFor="taskTypeOther"
+              error={errors.taskTypeOther}
+              hint="מה צריך לעשות — זה מה שיופיע ברשימות ובהתראות"
+            >
+              <Input
+                id="taskTypeOther"
+                name="taskTypeOther"
+                placeholder="למשל: הכנת אישור רו״ח לבנק"
+                defaultValue={task?.taskTypeOther ?? ""}
+                required
+              />
+            </Field>
+          )}
+
           <Field label="מועד הגשה *" htmlFor="dueDate" error={errors.dueDate}>
-            <Input
+            <DateField
               id="dueDate"
               name="dueDate"
-              type="date"
               defaultValue={toDateInputValue(task?.dueDate)}
               required
             />

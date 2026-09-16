@@ -79,6 +79,36 @@ export function periodLabelFor(
 }
 
 /**
+ * מועד ההגשה של תקופה נתונה, בכיוון ההפוך ל-`periodLabelFor`.
+ *
+ * משמש לקליטת דיווחים למפרע: בהינתן "מע\"מ של מרץ 2026" מחזיר את מועד
+ * ההגשה (15 באפריל 2026) ואת תווית התקופה, כך שהשורה שנוצרת זהה לחלוטין
+ * לשורה שמנוע המשימות היה יוצר בעצמו - כולל האינדקס הייחודי שמונע כפילות.
+ *
+ * מחזיר null כשהתקופה אינה תקפה לתדירות הזו, למשל תקופה של חודש בודד
+ * ללקוח שמדווח דו-חודשי.
+ */
+export function dueDateForPeriod(
+  frequency: RecurrenceFrequency,
+  dayOfMonth: number,
+  periodYear: number,
+  periodMonth: number,
+): GeneratedTask | null {
+  if (periodMonth < 1 || periodMonth > 12) return null;
+
+  const dueYear = periodMonth === 12 ? periodYear + 1 : periodYear;
+  const dueMonth = periodMonth === 12 ? 1 : periodMonth + 1;
+
+  if (!DUE_MONTHS[frequency].includes(dueMonth)) return null;
+
+  const day = Math.min(dayOfMonth, daysInMonth(dueYear, dueMonth));
+  return {
+    dueDate: new Date(Date.UTC(dueYear, dueMonth - 1, day)),
+    periodLabel: periodLabelFor(frequency, dueYear, dueMonth),
+  };
+}
+
+/**
  * מחשב את מועדי ההגשה של כלל חזרה בטווח זמן נתון.
  *
  * @param frequency תדירות הדיווח
@@ -143,6 +173,18 @@ export function defaultRulesForClient(
   // בעל שליטה מגיש דוח שנתי אישי בלבד - אין לו דיווחים שוטפים משלו
   if (client.clientType === "CONTROLLING_SHAREHOLDER") {
     return [annualReport];
+  }
+
+  // עוסק פטור פטור מדיווחי מע"מ ואין לו דיווחים שוטפים: רק דוח שנתי
+  // (והצהרת הון, שנפתחת ידנית כשרשות המסים דורשת אותה).
+  //
+  // החריג היחיד הוא טופס 102: החובה לדווח על ניכויי שכר נובעת מהעסקת
+  // עובדים ולא ממצב המע"מ, ולכן היא נשמרת אם הלקוח סומן כמעסיק. לקוח
+  // שלא סומן כמעסיק - וזה המצב הרגיל - לא יקבל דבר מלבד הדוח השנתי.
+  if (client.clientType === "EXEMPT_DEALER") {
+    return client.hasEmployees
+      ? [{ taskType: "WITHHOLDING_TAX", frequency: "MONTHLY", dayOfMonth: 15 }, annualReport]
+      : [annualReport];
   }
 
   const rules: DefaultRule[] = [];

@@ -16,7 +16,12 @@ import {
 const clientSchema = z.object({
   businessName: z.string().trim().min(1, "יש להזין שם עסק"),
   taxId: optionalText,
-  clientType: z.enum(["COMPANY", "SELF_EMPLOYED", "CONTROLLING_SHAREHOLDER"]),
+  clientType: z.enum([
+    "COMPANY",
+    "SELF_EMPLOYED",
+    "EXEMPT_DEALER",
+    "CONTROLLING_SHAREHOLDER",
+  ]),
   serviceType: z.enum([
     "FULL",
     "BOOKKEEPING",
@@ -107,4 +112,45 @@ export async function updateClient(
   revalidatePath("/clients");
   revalidatePath(`/clients/${clientId}`);
   redirect(`/clients/${clientId}`);
+}
+
+/**
+ * מחיקת לקוח.
+ *
+ * מוחקת בשרשור את אנשי הקשר, כללי החזרה וכל היסטוריית המשימות של הלקוח -
+ * ולכן היא דורשת הקלדת שם העסק במדויק. אישור בלחיצה אחת אינו מתאים כאן:
+ * זו הפעולה היחידה במערכת שמאבדת נתונים היסטוריים שאין להם גיבוי.
+ *
+ * ברוב המקרים הפעולה הנכונה היא סימון הלקוח כ"לא פעיל" ולא מחיקה - כך
+ * ההיסטוריה נשמרת והלקוח נעלם מהמסכים השוטפים.
+ */
+export async function deleteClient(
+  clientId: string,
+  _prevState: ClientFormState,
+  formData: FormData,
+): Promise<ClientFormState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "אין הרשאה." };
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { businessName: true },
+  });
+  if (!client) return { error: "הלקוח לא נמצא." };
+
+  const typed = String(formData.get("confirmName") ?? "").trim();
+  if (typed !== client.businessName.trim()) {
+    return {
+      error: "שם העסק שהוקלד אינו זהה. המחיקה לא בוצעה.",
+      fieldErrors: { confirmName: "יש להקליד את שם העסק במדויק" },
+    };
+  }
+
+  await prisma.client.delete({ where: { id: clientId } });
+
+  revalidatePath("/clients");
+  revalidatePath("/");
+  revalidatePath("/filings");
+  revalidatePath("/annual-reports");
+  redirect("/clients");
 }
