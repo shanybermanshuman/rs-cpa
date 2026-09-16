@@ -262,10 +262,10 @@ export default async function FilingsPage({
             <>
               {" · "}
               <span className="text-destructive">⚠</span> חריגה מהתקופות הקודמות
-              {" · "}
-              <span>–</span> תקופה שקדמה לשימוש במערכת, אפשר לקלוט לה סכום
             </>
           )}
+          {" · "}
+          <span>–</span> תקופה שקדמה לשימוש במערכת — לחיצה מסמנת שדווח
         </p>
       </div>
     </AppShell>

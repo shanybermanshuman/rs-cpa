@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { OPEN_STATUSES } from "@/lib/task-generator";
 import { startOfToday } from "@/lib/dates";
+import { RECURRING_TASK_TYPES } from "@/lib/recurrence";
 import type { ClientTaskType } from "@/generated/prisma/client";
 
 /**
@@ -22,13 +23,7 @@ export type FilingCycle = {
 };
 
 /** הדוח השנתי מנוהל במסך נפרד ולכן אינו נכלל במחזורים השוטפים. */
-export const RECURRING_CYCLE_TYPES: ClientTaskType[] = [
-  "VAT",
-  "INCOME_TAX_ADVANCE",
-  "NATIONAL_INSURANCE",
-  "WITHHOLDING_TAX",
-  "QUARTERLY_PL_REPORT",
-];
+export const RECURRING_CYCLE_TYPES = RECURRING_TASK_TYPES;
 
 export function cycleKey(taskType: string, periodLabel: string | null) {
   return `${taskType}::${periodLabel ?? ""}`;

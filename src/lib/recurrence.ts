@@ -149,6 +149,22 @@ export function dueDatesInRange(
   return result;
 }
 
+/**
+ * סוגי הדיווח השוטפים - המקור היחיד לרשימה הזו במערכת.
+ *
+ * הם מנוהלים בלוח המעקב ולא כמשימות. הרשימה הייתה מוגדרת בעבר בשלושה קבצים
+ * נפרדים, וכל סוג חדש שנוסף רק לאחד מהם היה נעלם בשקט מכרטיס הלקוח או מלוח
+ * הבקרה. הדוח השנתי אינו כאן: הוא מנוהל במסך נפרד לפי גלי אורכות.
+ */
+export const RECURRING_TASK_TYPES: ClientTaskType[] = [
+  "VAT",
+  "INCOME_TAX_ADVANCE",
+  "NATIONAL_INSURANCE",
+  "WITHHOLDING_TAX",
+  "WITHHOLDING_NI",
+  "QUARTERLY_PL_REPORT",
+];
+
 export type DefaultRule = {
   taskType: ClientTaskType;
   frequency: RecurrenceFrequency;
@@ -170,6 +186,13 @@ export function defaultRulesForClient(
     dayOfMonth: 30,
   };
 
+  // ניכויי שכר מדווחים לשתי רשויות - מס הכנסה וביטוח לאומי - ונעקבים בנפרד:
+  // אחד יכול להיות מדווח כשהשני עדיין לא, ולכל אחד סכום משלו.
+  const withholdingRules: DefaultRule[] = [
+    { taskType: "WITHHOLDING_TAX", frequency: "MONTHLY", dayOfMonth: 15 },
+    { taskType: "WITHHOLDING_NI", frequency: "MONTHLY", dayOfMonth: 15 },
+  ];
+
   // בעל שליטה מגיש דוח שנתי אישי בלבד - אין לו דיווחים שוטפים משלו
   if (client.clientType === "CONTROLLING_SHAREHOLDER") {
     return [annualReport];
@@ -182,9 +205,7 @@ export function defaultRulesForClient(
   // עובדים ולא ממצב המע"מ, ולכן היא נשמרת אם הלקוח סומן כמעסיק. לקוח
   // שלא סומן כמעסיק - וזה המצב הרגיל - לא יקבל דבר מלבד הדוח השנתי.
   if (client.clientType === "EXEMPT_DEALER") {
-    return client.hasEmployees
-      ? [{ taskType: "WITHHOLDING_TAX", frequency: "MONTHLY", dayOfMonth: 15 }, annualReport]
-      : [annualReport];
+    return client.hasEmployees ? [...withholdingRules, annualReport] : [annualReport];
   }
 
   const rules: DefaultRule[] = [];
@@ -211,10 +232,9 @@ export function defaultRulesForClient(
     rules.push({ taskType: "NATIONAL_INSURANCE", frequency: "MONTHLY", dayOfMonth: 15 });
   }
 
-  // ניכויים (טופס 102) - נדרש רק ממי שמעסיק עובדים, ומכסה גם את הניכוי
-  // ממס הכנסה וגם את הביטוח הלאומי של השכר.
+  // ניכויים (טופס 102) - נדרש רק ממי שמעסיק עובדים
   if (client.hasEmployees) {
-    rules.push({ taskType: "WITHHOLDING_TAX", frequency: "MONTHLY", dayOfMonth: 15 });
+    rules.push(...withholdingRules);
   }
 
   // דוח רווח והפסד רבעוני - נכלל בחבילת השירות המלא בלבד

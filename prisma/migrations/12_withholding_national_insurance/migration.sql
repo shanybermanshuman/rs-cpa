@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ClientTaskType" ADD VALUE 'WITHHOLDING_NI';

@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import {
   backfillFilingAmount,
+  backfillMarkSubmitted,
   setFilingAmount,
   toggleFilingCell,
 } from "@/app/filings/actions";
@@ -31,7 +32,7 @@ const STATE_TITLES = {
   SUBMITTED: "הוגש — לחיצה מבטלת",
   OPEN: "טרם הוגש — לחיצה מסמנת כהוגש",
   OVERDUE: "באיחור — לחיצה מסמנת כהוגש",
-  MISSING: "תקופה שקדמה לשימוש במערכת — אפשר לקלוט את הסכום שדווח",
+  MISSING: "תקופה שקדמה לשימוש במערכת — לחיצה מסמנת שדווח",
   NONE: "לא רלוונטי",
 } as const;
 
@@ -50,6 +51,24 @@ function CellButton({ cell, label }: { cell: BoardCell; label: string }) {
       )}
     >
       {pending ? "…" : STATE_SYMBOLS[cell.state]}
+    </button>
+  );
+}
+
+/** תא של תקופה שחלפה ואין לה שורה. מקווקו כדי שלא ייראה כמו "טרם הוגש". */
+function MissingButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  const title = `${label} · ${STATE_TITLES.MISSING}`;
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      title={title}
+      aria-label={title}
+      className="size-8 rounded border border-dashed text-sm text-muted-foreground/60 transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent disabled:opacity-50"
+    >
+      {pending ? "…" : STATE_SYMBOLS.MISSING}
     </button>
   );
 }
@@ -134,26 +153,17 @@ export function FilingBoardCell({
   label: string;
   showAmount?: boolean;
 }) {
-  // תקופה שחלפה ואין לה שורה: אין מה לסמן כהוגש, אבל אפשר לקלוט את הסכום
-  // שדווח בפועל. בלי הצגת סכומים אין לתא הזה שימוש, ולכן הוא נשאר עדין.
+  // תקופה שחלפה ואין לה שורה (לפני תחילת השימוש במערכת): לחיצה מסמנת אותה
+  // כ"דווח", ובהצגת סכומים אפשר גם להקליד את הסכום. שני המצבים חייבים לעבוד -
+  // לא לכל דיווח יש סכום בהישג יד, ובמקדמות ובניכויים לרוב רק מסמנים.
   if (cell.state === "MISSING" && cell.backfill) {
-    return showAmount ? (
+    return (
       <div className="inline-flex flex-col items-center gap-1">
-        <span
-          className="flex size-8 items-center justify-center rounded border border-dashed text-xs text-muted-foreground/60"
-          title={`${label} · ${STATE_TITLES.MISSING}`}
-        >
-          {STATE_SYMBOLS.MISSING}
-        </span>
-        <AmountInput cell={cell} label={label} />
+        <form action={backfillMarkSubmitted.bind(null, cell.backfill)} className="inline">
+          <MissingButton label={label} />
+        </form>
+        {showAmount && <AmountInput cell={cell} label={label} />}
       </div>
-    ) : (
-      <span
-        className="inline-flex size-8 items-center justify-center text-sm text-muted-foreground/40"
-        title={STATE_TITLES.MISSING}
-      >
-        {STATE_SYMBOLS.MISSING}
-      </span>
     );
   }
 

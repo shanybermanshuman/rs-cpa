@@ -70,41 +70,42 @@ export async function setFilingAmount(taskId: string, formData: FormData) {
   revalidatePath("/filings");
 }
 
+type BackfillTarget = {
+  clientId: string;
+  taskType: ClientTaskType;
+  periodYear: number;
+  periodMonth: number;
+};
+
 /**
- * קליטת סכום למפרע לתקופה שאין לה שורה במערכת.
+ * יוצר (או מעדכן) דיווח לתקופה שחלפה ואין לה שורה במערכת, כ"הוגש".
  *
- * דרושה כדי להשוות סכומים מתחילת השנה: התקופות שקדמו לתחילת השימוש במערכת
- * לא נוצרו על ידי מנוע המשימות, ולכן לא היה לאן להקליד אותן.
+ * התקופות שקדמו לתחילת השימוש במערכת לא נוצרו על ידי מנוע המשימות, ולכן
+ * לא היה אפשר לסמן אותן או להקליד להן סכום.
  *
  * מועד ההגשה ותווית התקופה נגזרים מכלל הדיווח של הלקוח דרך אותה פונקציה
  * שהמנוע משתמש בה, ולכן השורה שנוצרת זהה לשורה שהמנוע היה יוצר - והאינדקס
- * הייחודי `[recurrenceRuleId, dueDate]` מונע כפילות אם הקליטה תרוץ שוב.
+ * הייחודי `[recurrenceRuleId, dueDate]` מונע כפילות אם הפעולה תרוץ שוב.
  *
- * הדיווח נשמר כ"הוגש": מדובר בתקופה שחלפה שהסכום בה דווח בפועל.
+ * `amount` שאינו מוגדר משאיר את הסכום הקיים ללא שינוי - כך סימון "דווח"
+ * לא מוחק סכום שכבר הוזן.
+ *
+ * **אסור לייצא אותה**: כל ייצוא מקובץ `"use server"` הופך לנקודת קצה שאפשר
+ * לקרוא לה מהדפדפן, והיא אינה בודקת הרשאה - את זה עושות הפעולות שעוטפות אותה.
  */
-export async function backfillFilingAmount(
-  target: {
-    clientId: string;
-    taskType: ClientTaskType;
-    periodYear: number;
-    periodMonth: number;
-  },
-  formData: FormData,
-) {
-  const user = await getCurrentUser();
-  if (!user) return;
-
-  const amount = parseAmount(formData.get("amount"));
-  // שדה ריק אינו יוצר שורה: אין טעם לייצר דיווח בלי סכום
-  if (amount === undefined || amount === null) return;
-
+async function upsertBackfill(target: BackfillTarget, amount?: number) {
   const rule = await prisma.recurrenceRule.findFirst({
     where: {
       clientId: target.clientId,
       taskType: target.taskType,
       isActive: true,
     },
-    select: { id: true, frequency: true, dayOfMonth: true },
+    select: {
+      id: true,
+      frequency: true,
+      dayOfMonth: true,
+      client: { select: { ownerId: true } },
+    },
   });
   if (!rule) return;
 
@@ -132,13 +133,40 @@ export async function backfillFilingAmount(
       taskType: target.taskType,
       dueDate: period.dueDate,
       periodLabel: period.periodLabel,
-      amount,
+      amount: amount ?? null,
+      // כמו בשורות שהמנוע יוצר, כדי שדיווח שנקלט למפרע לא יהיה "יתום"
+      assigneeId: rule.client.ownerId,
       status: "SUBMITTED",
       completedAt: new Date(),
     },
-    update: { amount },
+    update: amount === undefined ? {} : { amount },
   });
 
   revalidatePath("/filings");
   revalidatePath("/");
+}
+
+/** קליטת סכום למפרע לתקופה שחלפה. הדיווח נשמר כ"הוגש". */
+export async function backfillFilingAmount(target: BackfillTarget, formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const amount = parseAmount(formData.get("amount"));
+  // שדה ריק אינו יוצר שורה: אין טעם לייצר דיווח בלי סכום
+  if (amount === undefined || amount === null) return;
+
+  await upsertBackfill(target, amount);
+}
+
+/**
+ * סימון תקופה שחלפה כ"דווח", בלי סכום.
+ *
+ * לא לכל דיווח יש סכום בהישג יד - במקדמות ובניכויים לרוב רק רוצים לתעד
+ * שהדיווח בוצע. בלי זה, התקופות שלפני השימוש במערכת נשארו חסרות סימון.
+ */
+export async function backfillMarkSubmitted(target: BackfillTarget) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await upsertBackfill(target);
 }

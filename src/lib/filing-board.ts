@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { OPEN_STATUSES } from "@/lib/task-generator";
 import { startOfToday } from "@/lib/dates";
-import { HEBREW_MONTHS, dueDateForPeriod } from "@/lib/recurrence";
+import {
+  HEBREW_MONTHS,
+  RECURRING_TASK_TYPES,
+  dueDateForPeriod,
+} from "@/lib/recurrence";
 import { clientTaskTypeLabels } from "@/lib/enums";
 import type {
   ClientTaskType,
@@ -18,13 +22,7 @@ import type {
  */
 
 /** סוגי הדיווח שמנוהלים בלוח. הדוח השנתי מנוהל במסך נפרד. */
-export const BOARD_TASK_TYPES: ClientTaskType[] = [
-  "VAT",
-  "INCOME_TAX_ADVANCE",
-  "NATIONAL_INSURANCE",
-  "WITHHOLDING_TAX",
-  "QUARTERLY_PL_REPORT",
-];
+export const BOARD_TASK_TYPES = RECURRING_TASK_TYPES;
 
 export type CellState =
   | "SUBMITTED"

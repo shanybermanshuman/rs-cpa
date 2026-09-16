@@ -54,7 +54,9 @@ enum ClientTaskType {
   VAT // מע"מ
   INCOME_TAX_ADVANCE // מקדמות מס הכנסה
   NATIONAL_INSURANCE // ביטוח לאומי
-  WITHHOLDING_TAX // ניכויים (טופס 102)
+  WITHHOLDING_TAX // ניכויים - מס הכנסה (טופס 102)
+  WITHHOLDING_NI // ניכויים - ביטוח לאומי (טופס 102). מדווח ומשולם בנפרד
+                 // ממס הכנסה, ולכן נעקב בנפרד עם סכום משלו
   QUARTERLY_PL_REPORT // דוח רווח והפסד רבעוני
   ANNUAL_REPORT // דוח שנתי
   CAPITAL_DECLARATION // הצהרת הון

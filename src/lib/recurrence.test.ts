@@ -175,7 +175,11 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       vatFrequency: null,
       hasEmployees: true,
     });
-    assert.deepEqual(rules.map((r) => r.taskType), ["WITHHOLDING_TAX", "ANNUAL_REPORT"]);
+    assert.deepEqual(rules.map((r) => r.taskType), [
+      "WITHHOLDING_TAX",
+      "WITHHOLDING_NI",
+      "ANNUAL_REPORT",
+    ]);
   });
 
   test("בעל שליטה אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
@@ -208,6 +212,24 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
     assert.ok(rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
   });
 
+  test("מעסיק עובדים מקבל ניכויים נפרדים למס הכנסה ולביטוח לאומי", () => {
+    const rules = defaultRulesForClient({
+      clientType: "COMPANY",
+      serviceType: "BOOKKEEPING",
+      vatFrequency: "MONTHLY",
+      hasEmployees: true,
+    });
+    const types = rules.map((r) => r.taskType);
+    assert.ok(types.includes("WITHHOLDING_TAX"));
+    assert.ok(types.includes("WITHHOLDING_NI"));
+    // שניהם חודשיים ב-15, כמו טופס 102
+    for (const t of ["WITHHOLDING_TAX", "WITHHOLDING_NI"] as const) {
+      const rule = rules.find((r) => r.taskType === t)!;
+      assert.equal(rule.frequency, "MONTHLY");
+      assert.equal(rule.dayOfMonth, 15);
+    }
+  });
+
   test("מי שאינו מעסיק עובדים אינו מקבל דיווח ניכויים", () => {
     const rules = defaultRulesForClient({
       clientType: "COMPANY",
@@ -216,6 +238,7 @@ describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חד
       hasEmployees: false,
     });
     assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
+    assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_NI"));
   });
 
   test("בעל שליטה אינו מקבל ניכויים גם אם סומן כמעסיק", () => {

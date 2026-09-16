@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { OPEN_STATUSES } from "@/lib/task-generator";
 import { startOfToday } from "@/lib/dates";
+import { RECURRING_TASK_TYPES } from "@/lib/recurrence";
 import type { ClientTask, ClientTaskType } from "@/generated/prisma/client";
 
 /** ספירות מצב לכל לקוח, לתצוגה מהירה ברשימת הלקוחות. */
@@ -83,13 +84,7 @@ export type ClientStatusSummary = {
 };
 
 /** סוגי הדיווח שמנוהלים בלוח המעקב ולא כמשימות של הלקוח. */
-const RECURRING_TYPES: ClientTaskType[] = [
-  "VAT",
-  "INCOME_TAX_ADVANCE",
-  "NATIONAL_INSURANCE",
-  "WITHHOLDING_TAX",
-  "QUARTERLY_PL_REPORT",
-];
+const RECURRING_TYPES = RECURRING_TASK_TYPES;
 
 /**
  * תמונת מצב של לקוח: לכל סוג דיווח - מה פתוח כרגע ומה כבר הוגש.
