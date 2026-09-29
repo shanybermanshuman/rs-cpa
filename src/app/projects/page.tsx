@@ -3,9 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
 import { NoAccessNotice } from "@/components/no-access-notice";
-import { NewProjectSection, StatusSelect } from "@/components/project-controls";
+import {
+  NewProjectSection,
+  PaidToggle,
+  StatusSelect,
+} from "@/components/project-controls";
 import { StatTile } from "@/components/stat-tile";
-import { projectStatusLabels } from "@/lib/enums";
+import { projectKindLabels, projectStatusLabels } from "@/lib/enums";
+import { formatAmount } from "@/lib/format";
+import type { ProjectKind, ProjectStatus } from "@/generated/prisma/client";
 import { daysUntil, describeDueDate, formatDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,25 +30,54 @@ const HISTORY_PREVIEW = 3;
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; kind?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) return <NoAccessNotice />;
 
-  const { view = "open" } = await searchParams;
+  const { view = "open", kind: kindParam } = await searchParams;
+  // לשונית הסוג: פרויקטים ותיקי קבלנות משנה מתנהלים באותו מסך, כדי שלא
+  // יהיה עוד מקום לנהל בו את עבודת המשרד
+  const kind: ProjectKind | null =
+    kindParam === "PROJECT" || kindParam === "SUBCONTRACT" ? kindParam : null;
 
-  const projects = await prisma.project.findMany({
-    where: view === "open" ? { status: { not: "DONE" } } : {},
-    include: {
-      tasks: { orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }] },
-      history: {
-        include: { changedBy: { select: { name: true } } },
-        orderBy: { createdAt: "desc" },
-        take: HISTORY_PREVIEW,
+  const [projects, unpaid] = await Promise.all([
+    prisma.project.findMany({
+      where: {
+        ...(view === "open" ? { status: { not: "DONE" as const } } : {}),
+        ...(kind ? { kind } : {}),
       },
-    },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-  });
+      include: {
+        tasks: { orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }] },
+        history: {
+          include: { changedBy: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+          take: HISTORY_PREVIEW,
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+    }),
+    // הגבייה נספרת **בלי הפילטר של הלשונית**: עבודה שהסתיימה וטרם שולמה
+    // היא בדיוק מה שנשכח, ובלשונית "פעילים" היא הייתה יוצאת מהחישוב - כלומר
+    // האריח היה מפספס את מה שנבנה בשבילו.
+    prisma.project.findMany({
+      where: { isPaid: false, fee: { not: null }, ...(kind ? { kind } : {}) },
+      select: { fee: true, status: true },
+    }),
+  ]);
+
+  // סדר השלבים נקבע כאן ולא בסדר ה-enum במסד: ערך שנוסף ל-enum קיים נדחף
+  // בפוסטגרס לסוף הרשימה, ולכן תיק חדש שהתקבל היה שוקע לתחתית המסך.
+  const STATUS_ORDER: ProjectStatus[] = [
+    "RECEIVED",
+    "IN_PROGRESS",
+    "WAITING_DOCS",
+    "WAITING_REPLY",
+    "DONE",
+  ];
+  projects.sort(
+    (a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status),
+  );
 
   const openProjects = projects.filter((p) => p.status !== "DONE");
   const waiting = openProjects.filter(
@@ -52,26 +87,47 @@ export default async function ProjectsPage({
     p.tasks.filter((t) => t.status !== "DONE" && t.dueDate && daysUntil(t.dueDate) < 0),
   );
 
+  const unpaidTotal = unpaid.reduce((sum, p) => sum + Number(p.fee), 0);
+  const unpaidDone = unpaid.filter((p) => p.status === "DONE").length;
+
   const views = [
     { key: "open", label: "פעילים" },
     { key: "all", label: "הכל" },
   ];
+
+  const kinds = [
+    { key: "", label: "הכל" },
+    { key: "PROJECT", label: "פרויקטים" },
+    { key: "SUBCONTRACT", label: "קבלנות משנה" },
+  ];
+
+  const tabHref = (next: { view?: string; kind?: string }) => {
+    const params = new URLSearchParams();
+    params.set("view", next.view ?? view);
+    const k = next.kind !== undefined ? next.kind : (kind ?? "");
+    if (k) params.set("kind", k);
+    return `/projects?${params.toString()}`;
+  };
+
+  const title = kind === "SUBCONTRACT" ? "קבלנות משנה" : "פרויקטים";
 
   return (
     <AppShell user={user}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">פרויקטים</h1>
+            <h1 className="text-2xl font-semibold">{title}</h1>
             <p className="text-sm text-muted-foreground">
-              עבודות חד-פעמיות שאינן של לקוחות המשרד
+              {kind === "SUBCONTRACT"
+                ? "תיקים שמשרדי רו״ח אחרים מעבירים אלינו"
+                : "עבודות חד-פעמיות שאינן של לקוחות המשרד"}
             </p>
           </div>
-          <NewProjectSection />
+          <NewProjectSection defaultKind={kind ?? "PROJECT"} />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <StatTile label="פרויקטים פעילים" value={openProjects.length} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile label="עבודות פעילות" value={openProjects.length} />
           <StatTile
             label="ממתינים למסמכים או לתשובות"
             value={waiting.length}
@@ -81,19 +137,47 @@ export default async function ProjectsPage({
             label="משימות באיחור"
             value={lateTasks.length}
             tone="danger"
-            hint={lateTasks.length > 0 ? "בכל הפרויקטים הפעילים" : undefined}
+            hint={lateTasks.length > 0 ? "בכל העבודות הפעילות" : undefined}
+          />
+          <StatTile
+            label="ממתין לגבייה"
+            value={Math.round(unpaidTotal)}
+            display={`${formatAmount(Math.round(unpaidTotal))} ₪`}
+            tone={unpaidDone > 0 ? "danger" : "default"}
+            hint={
+              unpaidDone > 0
+                ? `${unpaidDone} מהן כבר הסתיימו`
+                : unpaid.length > 0
+                  ? `${unpaid.length} עבודות`
+                  : undefined
+            }
           />
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {kinds.map((k) => (
+            <Link
+              key={k.key}
+              href={tabHref({ kind: k.key })}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                (kind ?? "") === k.key
+                  ? "bg-primary text-primary-foreground"
+                  : "border hover:bg-muted",
+              )}
+            >
+              {k.label}
+            </Link>
+          ))}
+          <span className="mx-1 w-px bg-border" aria-hidden />
           {views.map((v) => (
             <Link
               key={v.key}
-              href={`/projects?view=${v.key}`}
+              href={tabHref({ view: v.key })}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 view === v.key
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-secondary text-secondary-foreground"
                   : "border hover:bg-muted",
               )}
             >
@@ -135,9 +219,16 @@ export default async function ProjectsPage({
                           >
                             {project.name}
                           </Link>
+                          {/* בלשונית "הכל" חשוב לדעת מאיזה סוג כל שורה */}
+                          {kind === null && (
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                              {projectKindLabels[project.kind]}
+                            </span>
+                          )}
                           {project.partner && (
                             <span className="text-sm text-muted-foreground">
-                              · בשיתוף {project.partner}
+                              {project.kind === "SUBCONTRACT" ? "· מאת " : "· בשיתוף "}
+                              {project.partner}
                             </span>
                           )}
                         </div>
@@ -159,6 +250,12 @@ export default async function ProjectsPage({
                               {describeDueDate(next.dueDate)}
                             </span>
                           )}
+                          {project.fee !== null && (
+                            <span>
+                              {" · שכר טרחה: "}
+                              {formatAmount(Number(project.fee))} ₪
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -168,11 +265,12 @@ export default async function ProjectsPage({
                           status={project.status}
                           kind="project"
                         />
+                        {project.fee !== null && <PaidToggle project={project} />}
                         <Link
                           href={`/projects/${project.id}`}
                           className={buttonVariants({ variant: "ghost", size: "sm" })}
                         >
-                          לכרטיס הפרויקט
+                          {project.kind === "SUBCONTRACT" ? "לכרטיס התיק" : "לכרטיס הפרויקט"}
                         </Link>
                       </div>
                     </div>

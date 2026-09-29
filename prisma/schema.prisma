@@ -87,10 +87,17 @@ enum InternalTaskCategory {
 
 // שלבי פרויקט, כפי שהמשרד עוקב אחריהם בפועל.
 enum ProjectStatus {
+  RECEIVED // התקבל וטרם הותחל
   IN_PROGRESS // בעבודה
   WAITING_DOCS // ממתין למסמכים
   WAITING_REPLY // ממתין לתשובות
   DONE // הסתיים
+}
+
+// סוג העבודה החד-פעמית. שני הסוגים מתנהלים באותו מסך, בלשוניות נפרדות.
+enum ProjectKind {
+  PROJECT // פרויקט בשיתוף גורם חיצוני
+  SUBCONTRACT // תיק בקבלנות משנה - עבודה שמשרד רו"ח אחר מעביר אלינו
 }
 
 // עבודה חד-פעמית שאינה של לקוח של המשרד - למשל בשיתוף עם משרד רו"ח אחר.
@@ -98,9 +105,15 @@ enum ProjectStatus {
 model Project {
   id        String        @id @default(cuid())
   name      String
-  // הגורם החיצוני שאיתו מבוצע הפרויקט
+  kind      ProjectKind   @default(PROJECT)
+  // הגורם החיצוני: בפרויקט - השותף, ובקבלנות משנה - המשרד שמעביר את העבודה
   partner   String?
   status    ProjectStatus @default(IN_PROGRESS)
+  // שכר הטרחה על העבודה ומעקב אחר גבייתו. בקבלנות משנה זה מה שהמשרד
+  // המזמין חייב לנו, ובלי המעקב הזה עבודה שהסתיימה נשכחת לפני שנגבתה.
+  fee       Decimal?      @db.Decimal(10, 2)
+  isPaid    Boolean       @default(false)
+  paidAt    DateTime?
   notes     String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt

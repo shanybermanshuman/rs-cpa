@@ -12,7 +12,8 @@ const navItems = [
   { href: "/filings", label: "מעקב דיווחים" },
   { href: "/tasks", label: "משימות לקוחות" },
   { href: "/annual-reports", label: "דוחות שנתיים" },
-  { href: "/projects", label: "פרויקטים" },
+  { href: "/projects?view=open&kind=PROJECT", label: "פרויקטים" },
+  { href: "/projects?view=open&kind=SUBCONTRACT", label: "קבלנות משנה" },
   { href: "/internal-tasks", label: "משימות פנימיות" },
   { href: "/settings", label: "הגדרות" },
 ];

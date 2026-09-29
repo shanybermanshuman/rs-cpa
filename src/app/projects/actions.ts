@@ -5,14 +5,27 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { optionalDate, optionalText } from "@/lib/form-schema";
+import { optionalDate, optionalNumber, optionalText } from "@/lib/form-schema";
 
-const statusEnum = z.enum(["IN_PROGRESS", "WAITING_DOCS", "WAITING_REPLY", "DONE"]);
+const statusEnum = z.enum([
+  "RECEIVED",
+  "IN_PROGRESS",
+  "WAITING_DOCS",
+  "WAITING_REPLY",
+  "DONE",
+]);
 
 const projectSchema = z.object({
   name: z.string().trim().min(1, "יש להזין שם לפרויקט"),
+  kind: z.enum(["PROJECT", "SUBCONTRACT"]).default("PROJECT"),
   partner: optionalText,
   status: statusEnum,
+  // התקרה נובעת מ-Decimal(10,2) בסכמה. בלעדיה סכום גדול היה מפיל את
+  // הפעולה בשגיאת מסד כללית במקום להציג שגיאה על השדה.
+  fee: optionalNumber.refine(
+    (v) => v === null || (!Number.isNaN(v) && v >= 0 && v <= 99999999.99),
+    "שכר הטרחה אינו תקין (עד 99,999,999.99 ₪)",
+  ),
   notes: optionalText,
 });
 
@@ -192,4 +205,30 @@ export async function deleteProjectTask(taskId: string) {
 
   const task = await prisma.projectTask.delete({ where: { id: taskId } });
   revalidateProjects(task.projectId);
+}
+
+/**
+ * סימון העבודה כשולמה, או ביטול הסימון.
+ *
+ * תאריך התשלום נרשם אוטומטית בעת הסימון ונמחק בביטולו, כדי שלא יישאר
+ * תאריך של תשלום שלא התקבל. מי שצריך תאריך אחר מעדכן אותו בטופס הפרטים.
+ */
+export async function toggleProjectPaid(projectId: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { isPaid: true },
+  });
+  if (!project) return;
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: project.isPaid
+      ? { isPaid: false, paidAt: null }
+      : { isPaid: true, paidAt: new Date() },
+  });
+
+  revalidateProjects(projectId);
 }

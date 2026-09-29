@@ -8,11 +8,13 @@ import {
   AddProjectTaskForm,
   DeleteProjectButton,
   DeleteProjectTaskButton,
+  PaidToggle,
   ProjectForm,
   StatusSelect,
   UpdateProjectStatusForm,
 } from "@/components/project-controls";
-import { projectStatusLabels } from "@/lib/enums";
+import { projectKindLabels, projectStatusLabels } from "@/lib/enums";
+import { formatAmount } from "@/lib/format";
 import { daysUntil, describeDueDate, formatDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -55,18 +57,29 @@ export default async function ProjectPage({
     <AppShell user={user}>
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
-          <Link href="/projects" className="text-sm text-muted-foreground hover:text-accent">
-            → חזרה לפרויקטים
+          <Link
+            href={
+              project.kind === "SUBCONTRACT"
+                ? "/projects?view=open&kind=SUBCONTRACT"
+                : "/projects"
+            }
+            className="text-sm text-muted-foreground hover:text-accent"
+          >
+            {project.kind === "SUBCONTRACT" ? "→ חזרה לקבלנות משנה" : "→ חזרה לפרויקטים"}
           </Link>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-semibold">{project.name}</h1>
               <Badge variant="outline">{projectStatusLabels[project.status]}</Badge>
+              <Badge>{projectKindLabels[project.kind]}</Badge>
             </div>
             <DeleteProjectButton project={project} />
           </div>
           {project.partner && (
-            <p className="text-sm text-muted-foreground">בשיתוף {project.partner}</p>
+            <p className="text-sm text-muted-foreground">
+              {project.kind === "SUBCONTRACT" ? "מאת " : "בשיתוף "}
+              {project.partner}
+            </p>
           )}
         </div>
 
@@ -109,9 +122,40 @@ export default async function ProjectPage({
           </CardContent>
         </Card>
 
+        <Card className={cn(!project.isPaid && project.status === "DONE" && "border-destructive/40")}>
+          <CardHeader>
+            <CardTitle className="text-base">תשלום</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4">
+            <div className="text-sm">
+              {project.fee === null ? (
+                <span className="text-muted-foreground">
+                  לא הוזן שכר טרחה. אפשר להוסיף אותו בפרטי העבודה למטה.
+                </span>
+              ) : (
+                <>
+                  <span className="font-medium">
+                    {formatAmount(Number(project.fee))} ₪
+                  </span>
+                  <span className="text-muted-foreground">
+                    {project.isPaid && project.paidAt
+                      ? ` · שולם ב-${formatDate(project.paidAt)}`
+                      : project.status === "DONE"
+                        ? " · העבודה הסתיימה וטרם שולמה"
+                        : " · טרם שולם"}
+                  </span>
+                </>
+              )}
+            </div>
+            {project.fee !== null && <PaidToggle project={project} />}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">משימות הפרויקט</CardTitle>
+            <CardTitle className="text-base">
+              {project.kind === "SUBCONTRACT" ? "משימות התיק" : "משימות הפרויקט"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <AddProjectTaskForm projectId={project.id} />
@@ -180,7 +224,9 @@ export default async function ProjectPage({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">פרטי הפרויקט</CardTitle>
+            <CardTitle className="text-base">
+              {project.kind === "SUBCONTRACT" ? "פרטי התיק" : "פרטי הפרויקט"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ProjectForm project={project} />

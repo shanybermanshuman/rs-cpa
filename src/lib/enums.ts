@@ -76,10 +76,22 @@ export const recurrenceFrequencyLabels = {
 } as const;
 
 export const projectStatusLabels = {
+  RECEIVED: "התקבל וטרם הותחל",
   IN_PROGRESS: "בעבודה",
   WAITING_DOCS: "ממתין למסמכים",
   WAITING_REPLY: "ממתין לתשובות",
   DONE: "הסתיים",
+} as const;
+
+export const projectKindLabels = {
+  PROJECT: "פרויקט",
+  SUBCONTRACT: "קבלנות משנה",
+} as const;
+
+/** תווית הגורם החיצוני, שונה בין שני סוגי העבודה. */
+export const projectPartnerLabels = {
+  PROJECT: "שותף / גורם חיצוני",
+  SUBCONTRACT: "המשרד שהעביר את העבודה",
 } as const;
 
 export const userRoleLabels = {

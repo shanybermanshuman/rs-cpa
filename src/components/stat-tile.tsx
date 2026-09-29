@@ -9,12 +9,15 @@ import { Card, CardContent } from "@/components/ui/card";
 export function StatTile({
   label,
   value,
+  display,
   hint,
   href,
   tone = "default",
 }: {
   label: string;
   value: number;
+  /** תצוגה חלופית לערך, למשל סכום כסף עם מפריד אלפים. הלוגיקה נשארת מספרית. */
+  display?: string;
   hint?: string;
   href?: string;
   tone?: "default" | "danger" | "accent";
@@ -36,7 +39,7 @@ export function StatTile({
             tone === "accent" && "text-accent",
           )}
         >
-          {value}
+          {display ?? value}
         </p>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
