@@ -35,6 +35,8 @@ const clientSchema = z.object({
     .optional()
     .transform((v) => (v === "MONTHLY" || v === "BIMONTHLY" ? v : null)),
   hasEmployees: checkbox,
+  tracksIncomeTaxAdvance: checkbox,
+  tracksNationalInsurance: checkbox,
   // נשלח תמיד מהטופס, אך ברירת המחדל שומרת מפני מפתח חסר (ראו form-schema.ts)
   withholdingFrequency: z.enum(["MONTHLY", "BIMONTHLY"]).default("MONTHLY"),
   withholdingFileNumber: optionalText,

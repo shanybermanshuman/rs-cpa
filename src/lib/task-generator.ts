@@ -191,6 +191,8 @@ export async function syncDefaultRulesForClient(clientId: string): Promise<void>
       vatFrequency: true,
       hasEmployees: true,
       withholdingFrequency: true,
+      tracksIncomeTaxAdvance: true,
+      tracksNationalInsurance: true,
     },
   });
 

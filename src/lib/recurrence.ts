@@ -172,15 +172,28 @@ export type DefaultRule = {
 };
 
 /**
- * מציע את סט כללי החזרה הסטטוטוריים המתאים ללקוח, לפי סוג הלקוח,
- * סוג השירות ותדירות דיווח המע"מ שלו.
+ * סט כללי החזרה הסטטוטוריים של הלקוח.
  *
- * זו נקודת הפתיחה בלבד - ניתן להוסיף, לבטל או לשנות כללים לכל לקוח בנפרד.
+ * **נגזר מבחירות מפורשות בכרטיס הלקוח ולא מסוג הלקוח.** בעבר מקדמות מס
+ * הכנסה וביטוח לאומי נפתחו אוטומטית לפי סוג הלקוח, וזה לא תאם את המציאות:
+ * לא לכל לקוח יש מקדמות, ומנגד עוסק פטור או בעל שליטה שמוגש להם דוח שנתי
+ * בלבד יכולים בהחלט להיות חייבים במקדמות ובביטוח לאומי - והמערכת חסמה זאת.
+ *
+ * מה שכן נשאר נגזר, כי הוא נכון בהגדרה ולא לפי בחירה:
+ * - **מע"מ** אינו נפתח לעוסק פטור ולבעל שליטה. לעוסק פטור אין דיווח מע"מ
+ *   מעצם הגדרתו, ולבעל שליטה אין תיק עוסק כלל.
+ * - **דוח רווח והפסד רבעוני** נכלל בחבילת השירות המלא.
  */
 export function defaultRulesForClient(
   client: Pick<
     Client,
-    "clientType" | "serviceType" | "vatFrequency" | "hasEmployees" | "withholdingFrequency"
+    | "clientType"
+    | "serviceType"
+    | "vatFrequency"
+    | "hasEmployees"
+    | "withholdingFrequency"
+    | "tracksIncomeTaxAdvance"
+    | "tracksNationalInsurance"
   >,
 ): DefaultRule[] {
   const annualReport: DefaultRule = {
@@ -201,21 +214,6 @@ export function defaultRulesForClient(
     { taskType: "WITHHOLDING_NI", frequency: "MONTHLY", dayOfMonth: 15 },
   ];
 
-  // בעל שליטה מגיש דוח שנתי אישי בלבד - אין לו דיווחים שוטפים משלו
-  if (client.clientType === "CONTROLLING_SHAREHOLDER") {
-    return [annualReport];
-  }
-
-  // עוסק פטור פטור מדיווחי מע"מ ואין לו דיווחים שוטפים: רק דוח שנתי
-  // (והצהרת הון, שנפתחת ידנית כשרשות המסים דורשת אותה).
-  //
-  // החריג היחיד הוא טופס 102: החובה לדווח על ניכויי שכר נובעת מהעסקת
-  // עובדים ולא ממצב המע"מ, ולכן היא נשמרת אם הלקוח סומן כמעסיק. לקוח
-  // שלא סומן כמעסיק - וזה המצב הרגיל - לא יקבל דבר מלבד הדוח השנתי.
-  if (client.clientType === "EXEMPT_DEALER") {
-    return client.hasEmployees ? [...withholdingRules, annualReport] : [annualReport];
-  }
-
   const rules: DefaultRule[] = [];
 
   const vatFrequencyMap: Record<VatFrequency, RecurrenceFrequency> = {
@@ -223,8 +221,13 @@ export function defaultRulesForClient(
     BIMONTHLY: "BIMONTHLY",
   };
 
-  // רק ללקוח שהוגדרה לו תדירות דיווח מע"מ
-  if (client.vatFrequency) {
+  // מע"מ: רק ללקוח שהוגדרה לו תדירות, ולעולם לא לעוסק פטור או לבעל שליטה -
+  // לראשון אין דיווח מע"מ מעצם הגדרתו, ולשני אין תיק עוסק
+  const vatApplies =
+    client.clientType !== "EXEMPT_DEALER" &&
+    client.clientType !== "CONTROLLING_SHAREHOLDER";
+
+  if (client.vatFrequency && vatApplies) {
     rules.push({
       taskType: "VAT",
       frequency: vatFrequencyMap[client.vatFrequency],
@@ -232,11 +235,12 @@ export function defaultRulesForClient(
     });
   }
 
-  rules.push({ taskType: "INCOME_TAX_ADVANCE", frequency: "MONTHLY", dayOfMonth: 15 });
+  // מקדמות מס הכנסה וביטוח לאומי - בחירה מפורשת בכרטיס הלקוח
+  if (client.tracksIncomeTaxAdvance) {
+    rules.push({ taskType: "INCOME_TAX_ADVANCE", frequency: "MONTHLY", dayOfMonth: 15 });
+  }
 
-  // ביטוח לאומי של העצמאי עצמו. אצל חברה אין דיווח כזה - הביטוח הלאומי של
-  // העובדים מדווח כחלק מטופס 102.
-  if (client.clientType === "SELF_EMPLOYED") {
+  if (client.tracksNationalInsurance) {
     rules.push({ taskType: "NATIONAL_INSURANCE", frequency: "MONTHLY", dayOfMonth: 15 });
   }
 

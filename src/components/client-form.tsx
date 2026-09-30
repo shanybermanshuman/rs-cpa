@@ -198,6 +198,44 @@ export function ClientForm({ action, client, users, submitLabel }: Props) {
             </NativeSelect>
           </Field>
 
+          <Field
+            label="מקדמות מס הכנסה"
+            htmlFor="tracksIncomeTaxAdvance"
+            error={errors.tracksIncomeTaxAdvance}
+            hint="לא לכל לקוח יש מקדמות — כולל עוסק פטור ובעל שליטה שכן חייבים"
+          >
+            <div className="flex h-9 items-center gap-2">
+              <input
+                id="tracksIncomeTaxAdvance"
+                name="tracksIncomeTaxAdvance"
+                type="checkbox"
+                value="on"
+                defaultChecked={client?.tracksIncomeTaxAdvance ?? false}
+                className="size-4 accent-accent"
+              />
+              <span className="text-sm text-muted-foreground">חייב בדיווח מקדמות</span>
+            </div>
+          </Field>
+
+          <Field
+            label="ביטוח לאומי"
+            htmlFor="tracksNationalInsurance"
+            error={errors.tracksNationalInsurance}
+            hint="הביטוח הלאומי של העצמאי עצמו, לא של עובדיו"
+          >
+            <div className="flex h-9 items-center gap-2">
+              <input
+                id="tracksNationalInsurance"
+                name="tracksNationalInsurance"
+                type="checkbox"
+                value="on"
+                defaultChecked={client?.tracksNationalInsurance ?? false}
+                className="size-4 accent-accent"
+              />
+              <span className="text-sm text-muted-foreground">במעקב</span>
+            </div>
+          </Field>
+
           {/* עובר דרך Field כמו יתר השדות, כדי ששגיאה עליו לא תיבלע */}
           <Field label="מעסיק עובדים" htmlFor="hasEmployees" error={errors.hasEmployees}>
             <div className="flex h-9 items-center gap-2">

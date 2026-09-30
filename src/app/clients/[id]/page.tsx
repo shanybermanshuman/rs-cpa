@@ -122,6 +122,14 @@ export default async function ClientDetailPage({
                   label='תדירות מע"מ'
                   value={client.vatFrequency ? vatFrequencyLabels[client.vatFrequency] : null}
                 />
+                <DetailRow
+                  label="מקדמות מס הכנסה"
+                  value={client.tracksIncomeTaxAdvance ? "במעקב" : "לא חייב"}
+                />
+                <DetailRow
+                  label="ביטוח לאומי"
+                  value={client.tracksNationalInsurance ? "במעקב" : "לא במעקב"}
+                />
                 {client.hasEmployees && (
                   <DetailRow
                     label="תדירות ניכויי מס הכנסה"

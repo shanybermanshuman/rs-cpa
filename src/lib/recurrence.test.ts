@@ -98,215 +98,152 @@ describe("dueDatesInRange - מועדי הגשה", () => {
   });
 });
 
-describe("defaultRulesForClient - כללי ברירת המחדל ללקוח חדש", () => {
-  test("עצמאי דו-חודשי מקבל מע\"מ, מקדמות, ביטוח לאומי ודוח שנתי", () => {
-    const rules = defaultRulesForClient({
-      clientType: "SELF_EMPLOYED",
-      serviceType: "SELF_EMPLOYED_PACKAGE",
-      vatFrequency: "BIMONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
+/** לקוח לבדיקה. ברירות המחדל הן "שום דיווח שוטף", וכל בדיקה מדליקה את שלה. */
+function client(overrides: Partial<Parameters<typeof defaultRulesForClient>[0]> = {}) {
+  return {
+    clientType: "SELF_EMPLOYED" as const,
+    serviceType: "SELF_EMPLOYED_PACKAGE" as const,
+    vatFrequency: null,
+    hasEmployees: false,
+    withholdingFrequency: "MONTHLY" as const,
+    tracksIncomeTaxAdvance: false,
+    tracksNationalInsurance: false,
+    ...overrides,
+  };
+}
+
+describe("defaultRulesForClient - הדיווחים השוטפים נגזרים מבחירה מפורשת", () => {
+  test("לקוח בלי שום בחירה מקבל דוח שנתי בלבד", () => {
+    assert.deepEqual(defaultRulesForClient(client()).map((r) => r.taskType), [
+      "ANNUAL_REPORT",
+    ]);
+  });
+
+  test("מקדמות מס הכנסה נפתחות רק כשנבחרו", () => {
+    assert.ok(
+      !defaultRulesForClient(client()).some((r) => r.taskType === "INCOME_TAX_ADVANCE"),
+    );
+    assert.ok(
+      defaultRulesForClient(client({ tracksIncomeTaxAdvance: true })).some(
+        (r) => r.taskType === "INCOME_TAX_ADVANCE",
+      ),
+    );
+  });
+
+  test("ביטוח לאומי נפתח רק כשנבחר, ללא תלות בסוג הלקוח", () => {
+    assert.ok(
+      !defaultRulesForClient(client({ clientType: "SELF_EMPLOYED" })).some(
+        (r) => r.taskType === "NATIONAL_INSURANCE",
+      ),
+    );
+    assert.ok(
+      defaultRulesForClient(client({ clientType: "COMPANY", tracksNationalInsurance: true })).some(
+        (r) => r.taskType === "NATIONAL_INSURANCE",
+      ),
+    );
+  });
+
+  test("עוסק פטור שמוגש לו דוח שנתי בלבד יכול לקבל מקדמות וביטוח לאומי", () => {
+    const rules = defaultRulesForClient(
+      client({
+        clientType: "EXEMPT_DEALER",
+        tracksIncomeTaxAdvance: true,
+        tracksNationalInsurance: true,
+      }),
+    );
     assert.deepEqual(rules.map((r) => r.taskType), [
-      "VAT",
       "INCOME_TAX_ADVANCE",
       "NATIONAL_INSURANCE",
       "ANNUAL_REPORT",
     ]);
-    assert.equal(rules[0].frequency, "BIMONTHLY");
   });
 
-  test("חברה אינה מקבלת משימת ביטוח לאומי", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "BOOKKEEPING",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.ok(!rules.some((r) => r.taskType === "NATIONAL_INSURANCE"));
-    assert.ok(rules.some((r) => r.taskType === "VAT"));
-  });
-
-  test("בעל שליטה מקבל דוח שנתי בלבד, ללא דיווחים שוטפים", () => {
-    const rules = defaultRulesForClient({
-      clientType: "CONTROLLING_SHAREHOLDER",
-      serviceType: "OTHER",
-      vatFrequency: null,
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
-  });
-
-  test("עוסק פטור מקבל דוח שנתי בלבד, ללא דיווחים חודשיים", () => {
-    const rules = defaultRulesForClient({
-      clientType: "EXEMPT_DEALER",
-      serviceType: "SELF_EMPLOYED_PACKAGE",
-      vatFrequency: null,
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
-  });
-
-  test("עוסק פטור אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
-    const rules = defaultRulesForClient({
-      clientType: "EXEMPT_DEALER",
-      serviceType: "SELF_EMPLOYED_PACKAGE",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
-  });
-
-  test("עוסק פטור אינו מקבל מקדמות או ביטוח לאומי", () => {
-    const rules = defaultRulesForClient({
-      clientType: "EXEMPT_DEALER",
-      serviceType: "FULL",
-      vatFrequency: null,
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.ok(!rules.some((r) => r.taskType === "INCOME_TAX_ADVANCE"));
-    assert.ok(!rules.some((r) => r.taskType === "NATIONAL_INSURANCE"));
-    assert.ok(!rules.some((r) => r.taskType === "QUARTERLY_PL_REPORT"));
-  });
-
-  test("עוסק פטור שמעסיק עובדים כן מקבל ניכויים - החובה נובעת מהעסקה ולא ממע\"מ", () => {
-    const rules = defaultRulesForClient({
-      clientType: "EXEMPT_DEALER",
-      serviceType: "SELF_EMPLOYED_PACKAGE",
-      vatFrequency: null,
-      hasEmployees: true,
-      withholdingFrequency: "MONTHLY",
-    });
+  test("גם בעל שליטה יכול לקבל מקדמות", () => {
+    const rules = defaultRulesForClient(
+      client({ clientType: "CONTROLLING_SHAREHOLDER", tracksIncomeTaxAdvance: true }),
+    );
     assert.deepEqual(rules.map((r) => r.taskType), [
-      "WITHHOLDING_TAX",
-      "WITHHOLDING_NI",
+      "INCOME_TAX_ADVANCE",
       "ANNUAL_REPORT",
     ]);
   });
 
-  test("בעל שליטה אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
-    const rules = defaultRulesForClient({
-      clientType: "CONTROLLING_SHAREHOLDER",
-      serviceType: "FULL",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
+  test("מע\"מ נפתח לפי התדירות שנבחרה", () => {
+    const rules = defaultRulesForClient(client({ vatFrequency: "BIMONTHLY" }));
+    const vat = rules.find((r) => r.taskType === "VAT");
+    assert.equal(vat?.frequency, "BIMONTHLY");
   });
 
   test("לקוח ללא תדירות מע\"מ אינו מקבל משימת מע\"מ", () => {
-    const rules = defaultRulesForClient({
-      clientType: "SELF_EMPLOYED",
-      serviceType: "OTHER",
-      vatFrequency: null,
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
+    assert.ok(!defaultRulesForClient(client()).some((r) => r.taskType === "VAT"));
+  });
+
+  test("עוסק פטור אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
+    const rules = defaultRulesForClient(
+      client({ clientType: "EXEMPT_DEALER", vatFrequency: "MONTHLY" }),
+    );
     assert.ok(!rules.some((r) => r.taskType === "VAT"));
   });
 
-  test("מעסיק עובדים מקבל דיווח ניכויים (טופס 102)", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "FULL",
-      vatFrequency: "MONTHLY",
-      hasEmployees: true,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.ok(rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
+  test("בעל שליטה אינו מקבל מע\"מ גם אם הוגדרה לו תדירות בטעות", () => {
+    const rules = defaultRulesForClient(
+      client({ clientType: "CONTROLLING_SHAREHOLDER", vatFrequency: "MONTHLY" }),
+    );
+    assert.ok(!rules.some((r) => r.taskType === "VAT"));
   });
 
   test("מעסיק עובדים מקבל ניכויים נפרדים למס הכנסה ולביטוח לאומי", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "BOOKKEEPING",
-      vatFrequency: "MONTHLY",
-      hasEmployees: true,
-      withholdingFrequency: "MONTHLY",
-    });
-    const types = rules.map((r) => r.taskType);
+    const types = defaultRulesForClient(client({ hasEmployees: true })).map(
+      (r) => r.taskType,
+    );
     assert.ok(types.includes("WITHHOLDING_TAX"));
     assert.ok(types.includes("WITHHOLDING_NI"));
-    // שניהם חודשיים ב-15, כמו טופס 102
-    for (const t of ["WITHHOLDING_TAX", "WITHHOLDING_NI"] as const) {
-      const rule = rules.find((r) => r.taskType === t)!;
-      assert.equal(rule.frequency, "MONTHLY");
-      assert.equal(rule.dayOfMonth, 15);
-    }
   });
 
-  test("ניכויי מס הכנסה דו-חודשיים, וניכויי ביטוח לאומי נשארים חודשיים", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "BOOKKEEPING",
-      vatFrequency: "MONTHLY",
-      hasEmployees: true,
-      withholdingFrequency: "BIMONTHLY",
-    });
+  test("מי שאינו מעסיק עובדים אינו מקבל ניכויים", () => {
+    const types = defaultRulesForClient(client()).map((r) => r.taskType);
+    assert.ok(!types.includes("WITHHOLDING_TAX"));
+    assert.ok(!types.includes("WITHHOLDING_NI"));
+  });
+
+  test("ניכויי מס הכנסה דו-חודשיים, וביטוח לאומי נשאר חודשי", () => {
+    const rules = defaultRulesForClient(
+      client({ hasEmployees: true, withholdingFrequency: "BIMONTHLY" }),
+    );
     assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_TAX")!.frequency, "BIMONTHLY");
     assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_NI")!.frequency, "MONTHLY");
   });
 
-  test("תדירות ניכויים אינה משפיעה על לקוח שאינו מעסיק", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "BOOKKEEPING",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "BIMONTHLY",
-    });
-    assert.ok(!rules.some((r) => r.taskType.startsWith("WITHHOLDING")));
+  test("גם עוסק פטור שמעסיק עובדים מקבל ניכויים", () => {
+    const types = defaultRulesForClient(
+      client({ clientType: "EXEMPT_DEALER", hasEmployees: true }),
+    ).map((r) => r.taskType);
+    assert.ok(types.includes("WITHHOLDING_TAX"));
+    assert.ok(types.includes("WITHHOLDING_NI"));
   });
 
-  test("עוסק פטור מעסיק מקבל ניכויי מס הכנסה בתדירות שהוגדרה", () => {
-    const rules = defaultRulesForClient({
-      clientType: "EXEMPT_DEALER",
-      serviceType: "SELF_EMPLOYED_PACKAGE",
-      vatFrequency: null,
-      hasEmployees: true,
-      withholdingFrequency: "BIMONTHLY",
-    });
-    assert.equal(rules.find((r) => r.taskType === "WITHHOLDING_TAX")!.frequency, "BIMONTHLY");
+  test("דוח רווח והפסד רבעוני נכלל בשירות מלא בלבד", () => {
+    assert.ok(
+      defaultRulesForClient(client({ serviceType: "FULL" })).some(
+        (r) => r.taskType === "QUARTERLY_PL_REPORT",
+      ),
+    );
+    assert.ok(
+      !defaultRulesForClient(client({ serviceType: "ACCOUNTING_ONLY" })).some(
+        (r) => r.taskType === "QUARTERLY_PL_REPORT",
+      ),
+    );
   });
 
-  test("מי שאינו מעסיק עובדים אינו מקבל דיווח ניכויים", () => {
-    const rules = defaultRulesForClient({
-      clientType: "COMPANY",
-      serviceType: "FULL",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_TAX"));
-    assert.ok(!rules.some((r) => r.taskType === "WITHHOLDING_NI"));
-  });
-
-  test("בעל שליטה אינו מקבל ניכויים גם אם סומן כמעסיק", () => {
-    const rules = defaultRulesForClient({
-      clientType: "CONTROLLING_SHAREHOLDER",
-      serviceType: "OTHER",
-      vatFrequency: null,
-      hasEmployees: true,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.deepEqual(rules.map((r) => r.taskType), ["ANNUAL_REPORT"]);
-  });
-
-  test("שירות מלא כולל גם דוח רווח והפסד רבעוני", () => {
-    const rules = defaultRulesForClient({
-      clientType: "SELF_EMPLOYED",
-      serviceType: "FULL",
-      vatFrequency: "MONTHLY",
-      hasEmployees: false,
-      withholdingFrequency: "MONTHLY",
-    });
-    assert.ok(rules.some((r) => r.taskType === "QUARTERLY_PL_REPORT"));
+  test("הדוח השנתי נפתח תמיד, לכל סוגי הלקוחות", () => {
+    for (const clientType of ["COMPANY", "SELF_EMPLOYED", "EXEMPT_DEALER", "CONTROLLING_SHAREHOLDER"] as const) {
+      assert.ok(
+        defaultRulesForClient(client({ clientType })).some(
+          (r) => r.taskType === "ANNUAL_REPORT",
+        ),
+        clientType,
+      );
+    }
   });
 });
 

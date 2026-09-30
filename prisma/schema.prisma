@@ -196,6 +196,12 @@ model Client {
   withholdingFrequency VatFrequency @default(MONTHLY)
   // מעסיק עובדים - קובע אם נדרש דיווח ניכויים (טופס 102) על השכר
   hasEmployees       Boolean       @default(false)
+  // האם הלקוח חייב בדיווח מקדמות מס הכנסה. **בחירה מפורשת ולא נגזרת מסוג
+  // הלקוח**: לא לכל לקוח יש מקדמות, וגם עוסק פטור או בעל שליטה שמוגש להם
+  // דוח שנתי בלבד יכולים להיות חייבים בהן.
+  tracksIncomeTaxAdvance Boolean   @default(false)
+  // האם עוקבים אחר דיווח ביטוח לאומי של העצמאי עצמו (לא של עובדיו)
+  tracksNationalInsurance Boolean  @default(false)
   // מספר תיק ניכויים ברשות המסים
   withholdingFileNumber String?
   // שיעור ניכוי במקור באחוזים. 0 = פטור מניכוי במקור. null = טרם הוזן.
