@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { User } from "@/generated/prisma/client";
 import { logout } from "@/app/login/actions";
-import { getAlerts } from "@/lib/alerts";
+import { countActiveSnoozes, getAlerts } from "@/lib/alerts";
 import { AlertsBell } from "@/components/alerts-bell";
 import { Button } from "@/components/ui/button";
 
@@ -25,7 +25,7 @@ export async function AppShell({
   user: User;
   children: React.ReactNode;
 }) {
-  const alerts = await getAlerts();
+  const [alerts, snoozedCount] = await Promise.all([getAlerts(), countActiveSnoozes()]);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -43,7 +43,7 @@ export async function AppShell({
         </Link>
 
         <div className="flex items-center gap-2 md:gap-4">
-          <AlertsBell alerts={alerts} />
+          <AlertsBell alerts={alerts} snoozedCount={snoozedCount} />
           <span className="text-sm text-muted-foreground">{user.name}</span>
           <form action={logout}>
             <Button type="submit" variant="outline" size="sm">

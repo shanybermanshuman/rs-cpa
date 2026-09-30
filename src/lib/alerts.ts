@@ -7,13 +7,24 @@ import { WITHHOLDING_WARNING_DAYS, withholdingInfo } from "@/lib/withholding";
 /**
  * מנוע ההתראות של המערכת.
  *
- * ההתראות **נגזרות מהנתונים ואינן נשמרות**: אין "סימון כנקרא" ואי אפשר לסגור
- * התראה. היא נעלמת כשהבעיה נפתרת - כשהמשימה מוגשת או כשהאישור מחודש. במערכת
- * ציות, התראה שאפשר לסגור היא התראה שתיסגר ותישכח.
+ * ההתראות **נגזרות מהנתונים ואינן נשמרות**: אין "סימון כנקרא", והתראה נעלמת
+ * כשהבעיה נפתרת - כשהמשימה מוגשת או כשהאישור מחודש.
+ *
+ * הדבר היחיד שנשמר הוא **דחייה זמנית** (טבלת `alert_snoozes`): התראה מוסתרת
+ * ל-`SNOOZE_DAYS` ימים ואז חוזרת מעצמה. זו אינה סגירה - במערכת ציות התראה
+ * שאפשר לסגור לתמיד היא התראה שתיסגר ותישכח. מנגד, פעמון שאדום תמיד הופך
+ * לרקע, וזה אותו כישלון מהכיוון ההפוך.
+ *
+ * שתי הגנות על הדחייה: הדיווחים השוטפים אינם ניתנים לדחייה כלל, ומפתח
+ * הדחייה כולל את סוג ההתראה - כך שהסלמה מ"בעוד יומיים" ל"באיחור" מחזירה
+ * אותה מיד. ראו `snoozeKeyFor`.
  */
 
 /** כמה ימים לפני מועד ההגשה מתחילים להתריע. */
 export const TASK_LEAD_DAYS = 5;
+
+/** לכמה ימים נדחית התראה בלחיצה על "דחה". */
+export const SNOOZE_DAYS = 7;
 
 export type AlertSeverity = "CRITICAL" | "WARNING";
 
@@ -35,7 +46,27 @@ export type Alert = {
   href: string;
   /** התאריך שהוביל להתראה, למיון */
   date: Date | null;
+  /**
+   * המפתח שבו נשמרת דחיית ההתראה, או null כשאסור לדחות אותה.
+   *
+   * המפתח כולל את **סוג** ההתראה ולא רק את מזהה השורה, כדי שהסלמה תחזיר
+   * אותה מיד: משימה שנדחתה כשהייתה "בעוד יומיים" מקבלת מפתח אחר כשהיא
+   * הופכת ל"באיחור", ולכן היא צפה שוב במקום להיבלע עד סוף השבוע.
+   */
+  snoozeKey: string | null;
 };
+
+/**
+ * האם מותר לדחות התראה מסוג זה.
+ *
+ * הדיווחים השוטפים **אינם ניתנים לדחייה**: זו שורה מקובצת אחת שמייצגת את כל
+ * לוח הדיווחים, והמזהה שלה קבוע בזמן שהתוכן משתנה. דחייה שלה הייתה מסתירה גם
+ * דיווחים שנכנסו לאיחור **אחרי** הדחייה - בלי שום סימן לכך שהמספר גדל.
+ * זו גם ההתראה הזולה ביותר במסך, ולכן אין מה להרוויח מהסתרתה.
+ */
+function snoozeKeyFor(alert: Omit<Alert, "snoozeKey">): string | null {
+  return alert.kind === "FILINGS_OVERDUE" ? null : `${alert.kind}:${alert.id}`;
+}
 
 function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * 86_400_000);
@@ -92,7 +123,7 @@ export async function getAlerts(): Promise<Alert[]> {
     }),
   ]);
 
-  const alerts: Alert[] = [];
+  const alerts: Omit<Alert, "snoozeKey">[] = [];
 
   // דיווחים שוטפים - התראה מקובצת אחת, ורק על מה שכבר עבר את מועד ההגשה.
   // התראה מקדימה על כל דיווח חוזר הייתה מייצרת עשרות התראות בכל חודש.
@@ -171,10 +202,33 @@ export async function getAlerts(): Promise<Alert[]> {
     });
   }
 
-  return alerts.sort((a, b) => {
-    if (a.severity !== b.severity) return a.severity === "CRITICAL" ? -1 : 1;
-    return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
-  });
+  // התראות שנדחו נעלמות עד שהמועד חולף, ואז חוזרות מעצמן. הדחייה נשלפת
+  // אחרי בניית הרשימה כדי שהסינון יהיה על מפתחות הדחייה עצמם.
+  const withKeys = alerts.map((alert) => ({ ...alert, snoozeKey: snoozeKeyFor(alert) }));
+  const keys = withKeys
+    .map((alert) => alert.snoozeKey)
+    .filter((key): key is string => key !== null);
+
+  const snoozed =
+    keys.length === 0
+      ? []
+      : await prisma.alertSnooze.findMany({
+          where: { until: { gt: new Date() }, alertId: { in: keys } },
+          select: { alertId: true },
+        });
+  const hidden = new Set(snoozed.map((s) => s.alertId));
+
+  return withKeys
+    .filter((alert) => alert.snoozeKey === null || !hidden.has(alert.snoozeKey))
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "CRITICAL" ? -1 : 1;
+      return (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0);
+    });
+}
+
+/** כמה התראות דחויות פעילות יש כרגע, להצגה בפעמון. */
+export async function countActiveSnoozes(): Promise<number> {
+  return prisma.alertSnooze.count({ where: { until: { gt: new Date() } } });
 }
 
 /** סיכום קצר לשורת הפתיחה של המייל היומי ולכותרת הפעמון. */

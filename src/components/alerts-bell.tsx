@@ -1,21 +1,59 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { toast } from "sonner";
+import { clearSnoozes, snoozeAlert } from "@/app/alerts/actions";
 import type { Alert } from "@/lib/alerts";
 import { cn } from "@/lib/utils";
 
 /**
  * פעמון ההתראות.
  *
- * ההתראות אינן ניתנות לסגירה - הן נעלמות כשהבעיה נפתרת (ראו ההסבר
- * ב-src/lib/alerts.ts). מה שכן נזכר הוא ההודעה הקופצת: היא מוצגת פעם אחת
+ * התראה אינה נסגרת אלא נעלמת כשהבעיה נפתרת. אפשר **לדחות** אותה לשבוע,
+ * והיא חוזרת מעצמה (ראו ההסבר ב-src/lib/alerts.ts). מה שכן נזכר הוא ההודעה הקופצת: היא מוצגת פעם אחת
  * לכניסה למערכת ולא בכל מעבר בין מסכים, אחרת היא הופכת למטרד ומפסיקים
  * להסתכל עליה.
  */
-export function AlertsBell({ alerts }: { alerts: Alert[] }) {
+/**
+ * דחיית התראה לשבוע.
+ *
+ * הכפתור יושב **מחוץ** לקישור ולא בתוכו: קישור עוטף כפתור הוא HTML לא חוקי,
+ * והלחיצה הייתה גם מנווטת וגם דוחה.
+ */
+function SnoozeButton({ title }: { title: string }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      title={`דחיית "${title}" לשבוע`}
+      aria-label={`דחיית ההתראה "${title}" לשבוע`}
+      className="mt-2 me-2 shrink-0 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+    >
+      {pending ? "…" : "דחה"}
+    </button>
+  );
+}
+
+function SnoozeForm({ alertId, title }: { alertId: string; title: string }) {
+  return (
+    <form action={snoozeAlert.bind(null, alertId)}>
+      <SnoozeButton title={title} />
+    </form>
+  );
+}
+
+export function AlertsBell({
+  alerts,
+  snoozedCount,
+}: {
+  alerts: Alert[];
+  snoozedCount: number;
+}) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const critical = alerts.filter((a) => a.severity === "CRITICAL");
@@ -90,18 +128,36 @@ export function AlertsBell({ alerts }: { alerts: Alert[] }) {
             )}
           </div>
 
+          {snoozedCount > 0 && (
+            <form
+              action={clearSnoozes}
+              className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-2"
+            >
+              <span className="text-xs text-muted-foreground">
+                {snoozedCount} התראות דחויות
+              </span>
+              <button
+                type="submit"
+                className="rounded px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-background"
+              >
+                החזרה למסך
+              </button>
+            </form>
+          )}
+
           {alerts.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">
               אין התראות פתוחות. הכל מסודר.
             </p>
           ) : (
+            <>
             <ul className="max-h-96 divide-y overflow-y-auto">
               {alerts.map((alert) => (
-                <li key={alert.id}>
+                <li key={alert.id} className="flex items-start gap-1 hover:bg-muted">
                   <Link
                     href={alert.href}
                     onClick={() => setOpen(false)}
-                    className="block px-3 py-2 transition-colors hover:bg-muted"
+                    className="block min-w-0 flex-1 px-3 py-2"
                   >
                     <div className="flex items-start gap-2">
                       <span
@@ -130,9 +186,17 @@ export function AlertsBell({ alerts }: { alerts: Alert[] }) {
                       </div>
                     </div>
                   </Link>
+                  {alert.snoozeKey && (
+                    <SnoozeForm alertId={alert.snoozeKey} title={alert.title} />
+                  )}
                 </li>
               ))}
             </ul>
+            <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+              &quot;דחה&quot; מסתיר התראה לשבוע והיא חוזרת אם לא טופלה.
+              דיווחים שוטפים אינם ניתנים לדחייה.
+            </p>
+            </>
           )}
         </div>
       )}
