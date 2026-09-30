@@ -248,7 +248,11 @@ model ClientContact {
  */
 model AlertSnooze {
   id          String   @id @default(cuid())
-  /** מזהה ההתראה כפי שנבנה ב-getAlerts, למשל task-<id> או filings-overdue */
+  /**
+   * מפתח הדחייה כפי שנבנה ב-snoozeKeyFor, בפורמט <kind>:<alertId> -
+   * למשל TASK_OVERDUE:task-<id>. הסוג הוא חלק מהמפתח כדי שהסלמה תחזיר את
+   * ההתראה מיד. FILINGS_OVERDUE לעולם אינו נשמר כאן - הוא אינו ניתן לדחייה.
+   */
   alertId     String   @unique
   until       DateTime
   createdById String?

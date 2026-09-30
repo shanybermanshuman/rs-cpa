@@ -99,7 +99,11 @@ export function AlertsBell({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={
-          alerts.length === 0 ? "אין התראות" : `${alerts.length} התראות`
+          alerts.length > 0
+            ? `${alerts.length} התראות`
+            : snoozedCount > 0
+              ? `אין התראות פתוחות, ${snoozedCount} דחויות`
+              : "אין התראות"
         }
         aria-expanded={open}
         className="relative flex size-9 items-center justify-center rounded-md transition-colors hover:bg-muted"
@@ -147,7 +151,9 @@ export function AlertsBell({
 
           {alerts.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">
-              אין התראות פתוחות. הכל מסודר.
+              {snoozedCount > 0
+                ? "אין התראות פתוחות כרגע, אך יש דחויות שיחזרו."
+                : "אין התראות פתוחות. הכל מסודר."}
             </p>
           ) : (
             <>

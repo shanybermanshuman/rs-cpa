@@ -16,18 +16,25 @@ import { SNOOZE_DAYS } from "@/lib/alerts";
  * ההתראה נעלמת בעקבות זאת גם מהסיכום היומי במייל, כי שניהם נשענים על
  * `getAlerts`.
  */
-export async function snoozeAlert(alertId: string) {
+export async function snoozeAlert(snoozeKey: string) {
   const user = await getCurrentUser();
   if (!user) return;
 
   const until = new Date(Date.now() + SNOOZE_DAYS * 86_400_000);
+  // המזהה שמתחת למפתח, לניקוי דחייה של אותה התראה בשלב קודם
+  const underlyingId = snoozeKey.slice(snoozeKey.indexOf(":") + 1);
 
   await prisma.$transaction([
     // ניקוי דחיות שפג תוקפן, כדי שהטבלה לא תתפח לאורך שנים
     prisma.alertSnooze.deleteMany({ where: { until: { lt: new Date() } } }),
+    // דחייה של אותה התראה בשלב קודם כבר אינה מסתירה דבר אחרי ההסלמה, אך
+    // הייתה ממשיכה להיספר במונה "התראות דחויות" ולהטעות
+    prisma.alertSnooze.deleteMany({
+      where: { alertId: { endsWith: `:${underlyingId}` } },
+    }),
     prisma.alertSnooze.upsert({
-      where: { alertId },
-      create: { alertId, until, createdById: user.id },
+      where: { alertId: snoozeKey },
+      create: { alertId: snoozeKey, until, createdById: user.id },
       update: { until, createdById: user.id },
     }),
   ]);
